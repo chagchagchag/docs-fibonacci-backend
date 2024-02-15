@@ -4,9 +4,9 @@ import { DocsThemeConfig } from 'nextra-theme-docs'
 const config: DocsThemeConfig = {
   logo: <span>My Project</span>,
   project: {
-    link: 'https://github.com/chagchagchag/my-nextra-template',
+    link: 'https://github.com/chagchagchag/docs-fibonacci-backend',
   },
-  docsRepositoryBase: 'https://github.com/chagchagchag/my-nextra-template',
+  docsRepositoryBase: 'https://github.com/chagchagchag/docs-fibonacci-backend',
   footer: {
     text: 'Nextra Docs Template',
   },
