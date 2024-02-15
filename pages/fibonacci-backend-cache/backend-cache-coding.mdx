@@ -1,0 +1,176 @@
+## Backend 코드 작업
+
+## FibonacciCacheController
+`FibonacciCacheController`
+```java
+// ...
+@RestController
+public class FibonacciCacheController {
+    @Value("${fibonacci.language}") // 1)
+    private String language;
+
+    @Value("${fibonacci.api-key}")  // 1)
+    private String apiKey;
+
+    private final FibonacciResultCacheService fibonacciResultCacheService;
+    private final FibonacciCalculateRestClient fibonacciCalculateRestClient;
+    private final FibonacciTaskQueue fibonacciTaskQueue;
+
+    public FibonacciCacheController(
+        FibonacciResultCacheService fibonacciResultCacheService,
+        FibonacciCalculateRestClient fibonacciCalculateRestClient,
+        FibonacciTaskQueue fibonacciTaskQueue
+    ){
+        this.fibonacciResultCacheService = fibonacciResultCacheService;
+        this.fibonacciCalculateRestClient = fibonacciCalculateRestClient;
+        this.fibonacciTaskQueue = fibonacciTaskQueue;
+    }
+
+    @GetMapping("/fibonacci/{number}")
+    public String getFibonacci(
+            @PathVariable("number") int number,
+            @RequestParam(value = "api-key", required = false) String apiKey
+    ){
+        if(number > 10){
+            if(!this.apiKey.equals(apiKey)){
+                throw new ApiKeyNotExistException("10 이상의 수에 대한 피보나치 계산은 API KEY 가 필요합니다.");
+            }
+        }
+
+        return fibonacciResultCacheService
+                .selectFibonacci(number)
+                .map(BigDecimal::toPlainString)
+                .orElseGet(() -> {
+                    if(number > 1000){
+                        final long size = fibonacciTaskQueue.offerTask(number);
+                        return switch (language){
+                            case "ko" -> "fibonacci(" + number + ") 계산을 예약합니다. 남은 작업수 = " + size;
+                            case "en" -> "fibonacci(" + number + ") has been scheduled. Remain task = " + size;
+                            default -> "Unsupported Language";
+                        };
+                    }
+
+                    return fibonacciCalculateRestClient
+                            .requestGetFibonacci(number)
+                            .map(result -> {
+                                fibonacciResultCacheService.putResult(number, result);
+                                return result.toPlainString();
+                            })
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "피보나치 연산에 문제가 발생했습니다."
+                            ));
+
+                });
+    }
+}
+```
+<br>
+
+1\) `${fibonacci.language}`, `${fibonacci.api-key}`
+- 쿠버네티스 레벨에서 주입한 환경변수입니다. Pod 내에서는 ConfigMap 에 선언한 설정변수를 환경변수로 주입받고, Pod 내에서 Docker Container 로 동작하는 `fibonacci-backend-cache` 모듈 내에서는 `application.yml` 파일 내에서 아래와 같이 환경변수를 주입받고 있습니다.
+```yaml
+fibonacci:
+  language: ${APP_LANGUAGE:en} # 여기
+  api-key: ${API_KEY:hello-welcome} # 여기
+spring:
+  data:
+    redis:
+      host: redis-service.default.svc.cluster.local
+      port: 6379
+```
+<br>
+
+## FibonacciResultCacheService
+```java
+// ...
+@Service
+public class FibonacciResultCacheService {
+    private final StringRedisTemplate stringRedisTemplate;
+
+    public FibonacciResultCacheService(
+            StringRedisTemplate stringRedisTemplate
+    ){
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
+
+    private final String HASH_KEY = "fibonacci:result-set";
+
+    public Optional<BigDecimal> selectFibonacci(int number){
+        return getResult(String.valueOf(number))
+                .map(str -> new BigDecimal(str));
+    }
+
+    public Optional<String> getResult(String key){
+        HashOperations<String, String, String> hashOperations =
+                stringRedisTemplate.opsForHash();
+
+        return Optional
+                .ofNullable(hashOperations.get(HASH_KEY, key));
+    }
+
+    public void putResult(int n, BigDecimal result){
+        stringRedisTemplate.opsForHash().put(HASH_KEY, String.valueOf(n), result.toPlainString());
+    }
+}
+```
+<br>
+
+
+## FibonacciCalculateRestClient
+
+```java
+// ...
+@Component
+public class FibonacciCalculateRestClient {
+    private final RestClient fibonacciClient = RestClient.create();
+    public Optional<BigDecimal> requestGetFibonacci(int number) {
+        String result = fibonacciClient.get()
+                .uri("http://fibonacci-backend-web-service:8080/fibonacci?number="+number) // 1)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, (request, response) -> {
+                    throw new RuntimeException("invalid server response "+ response.getStatusText());
+                })
+                .body(String.class);
+
+        return Optional.ofNullable(new BigDecimal(result));
+    }
+}
+```
+1\)
+- 같은 클러스터 내에 같은 namespace 에 존재하는 다른 Deployment 를 호출할 때는 그 Deployment 가 속한 Service 의 이름을 지정하는 것만으로 호출이 가능합니다.
+- `fibonacci-backend-web-service` 는 `fibonacci-backend-web-deploy` 라는 디플로이먼트의 네트워킹을 위한 서비스입니다.
+- `fibonacci-backend-deploy`는 `fibonacci-backend-web` 모듈을 `Deployment` 로 배포하는 리소스입니다. `fibonacc-backend-web` 모듈은 fibonacci 계산을 Top Down 방식으로 계산하는 `/fibonacci` API를 가지고 있고, `fibonacci-backend-cache` 에서 호출합니다.
+<br>
+
+
+## Probe (헬스체크) 
+`HealthCheckController`
+```java
+// ...
+
+@RestController
+@RequestMapping("/probe")
+public class HealthCheckController {
+
+    private final Logger logger = LoggerFactory.getLogger(HealthCheckController.class);
+
+    @GetMapping("/startup")
+    public String startupCheck(){
+        logger.info("[startup probe] >>> OK");
+        return "START UP OK";
+    }
+
+    @GetMapping("/ready")
+    public String readinessCheck(){
+        logger.info("[readiness probe] >>> OK");
+        return "READY OK";
+    }
+
+    @GetMapping("/live")
+    public String livenessCheck(){
+        logger.info("[liveness probe] >>> OK");
+        return "OK";
+    }
+
+}
+```

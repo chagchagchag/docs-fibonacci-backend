@@ -1,0 +1,449 @@
+## k8s 리소스 정의 & 로컬 k8s 확인
+
+시크릿 리소스를 정의하고 사용하는 부분에서는 api-key 를 시크릿에 정의해서 사용합니다. 사실 api-key 를 Secret 에서 정의해두고 단 하나의 api-key 만으로 검사를 한다는 것은 조금 이상해보일 수도 있고 언뜻 예제가 이해가 안갈 수 있습니다.<br>
+
+하지만, `fibonacci-backend-cache` 에서 다양한 쿠버네티스 리소스를 모두 다뤄보려 하다보니 시크릿을 사용하는 기능을 추가해서 억지로 끼워맞췄다는 점을 이해해주시기 바랍니다. 
+<br>
+
+## 들어가기 전에..
+이번 페이지는 ArgoCD나 이런 것들을 설치하지 않은 간단한 버전의 클러스터를 기준으로 리소스들을 kubectl 로 하나 하나 만들어가면서 테스트해가면서 기능들을 완성하는 과정을 설명하기 위한 것이 목적입니다.<br>
+
+이번에 사용할 클러스터 정의는 `cluster/single-cluster.yml` 에 있고, 쉘스크립트는 `cluster/create-single-cluster.sh` 입니다.<br>
+<br>
+
+## namespace 정의
+예제 테스트를 위한 namespace를 정의합니다. namespace 는 `fibonacci` 입니다.<br>
+
+```bash
+$ kubectl create ns fibonacci
+namespace/fibonacci created
+```
+<br>
+
+## Secret 정의
+먼저 api 키를 정의합니다. 
+```bash
+kubectl -n fibonacci create secret generic fibonacci-backend-cache-secret --from-literal=api-key=abcd-efgh-ijkl-1111
+```
+<br>
+
+이렇게 생성한 시크릿은 아래와 같이 확인 가능합니다.
+```bash
+kubectl -n fibonacci get secret fibonacci-backend-cache-secret -o yaml
+...
+
+
+apiVersion: v1
+data:
+  api-key: YWJjZC1lZmdoLWlqa2wtMTExMQ==
+kind: Secret
+metadata:
+  creationTimestamp: "2024-01-26T04:13:56Z"
+  name: fibonacci-backend-cache-secret
+  namespace: fibonacci
+  resourceVersion: "6919"
+  uid: 2f641720-ee50-4223-8120-639ac984524c
+type: Opaque
+```
+<br>
+
+만약 이미 배포되어있는 secret 내의 속성값의 디코딩 된 실제 값을 알고 싶다면 아래와 같이 base64 decoding 을 해주면 됩니다.
+```bash
+$ echo "YWJjZC1lZmdoLWlqa2wtMTExMQ==" | base64 -d
+abcd-efgh-ijkl-1111
+```
+<br>
+
+혹시 평문 문자열이 시크릿 안에 들어갔을 때 어떻게 변하는지 확인하고 싶다면 아래와 같이 -n 옵션을 주어서 개행문자를 제거한 문자열에 대해 base64 인코딩을 해줍니다.
+```bash
+$ echo -n "abcd-efgh-ijkl-1111" | base64
+YWJjZC1lZmdoLWlqa2wtMTExMQ==
+```
+<br>
+-n 옵션이 없으면 개행문자가 추가된 상태로 출력됩니다.<br>
+<br>
+
+## ConfigMap 정의
+이번에는 ConfigMap 을 정의해봅니다.<br>
+`fibonacci-cache-config.yml`<br>
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fibonacci-cache-config
+  namespace: fibonacci
+data:
+  language: "ko"
+```
+<br>
+
+`data.language`
+- `data.language` 라는 속성에 대한 값으로 `ko` 라는 값을 지정했습니다.
+<br>
+
+이렇게 지정한 configmap 을 클러스터 내에 리소스로 생성되게끔 kubectl 로 요청해봅니다.
+```bash
+$ kubectl apply -f fibonacci-cache-config.yml
+configmap/fibonacci-cache-config created
+```
+<br>
+
+생성되었는지 확인
+```bash
+$ kubectl -n fibonacci get configmap fibonacci-cache-config
+NAME                     DATA   AGE
+fibonacci-cache-config   1      153m
+
+$ kubectl -n fibonacci get configmap fibonacci-cache-config -o yaml
+apiVersion: v1
+data:
+  language: ko
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"language":"ko"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"fibonacci-cache-config","namespace":"fibonacci"}}
+  creationTimestamp: "2024-01-26T04:34:48Z"
+  name: fibonacci-cache-config
+  namespace: fibonacci
+  resourceVersion: "8711"
+  uid: 98d6a65b-4eeb-4ca5-8f0c-c23ac35bb479
+```
+<br>
+
+## PV, PVC 정의
+pv, pvc 를 이용해서 로그를 파일로 작성하는 예제입니다<br/>
+<br/>
+
+pv, pvc에 대해 궁금한 점들이 있다면 아래의 문서들을 참고해주세요.
+- [PV, PVC](https://chagchagchag.github.io/docs-k8s-resources/storage/PV-PVC/)
+- [StorageClass](https://chagchagchag.github.io/docs-k8s-resources/storage/storage-class/)
+<br/>
+
+### PVC
+`local-storage` 타입의 StorageClass 로 정의한 볼륨을 마운트하는 예제입니다.<br/>
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cache-log-storage-claim
+  namespace: fibonacci
+spec:
+  # kubectl get sc 명령을 통해 나타나는 StorageClass 중 하나를 선택했다.
+  # 로컬에서는 kind 버전에 따라 standard 가 나올수도 있고 local-storage 가 나올수도 있다.
+  storageClassName: standard
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+```
+<br/>
+
+- `metadata.name` : 스토리지 클래스 명
+- `spec.storageClassName`
+  - 사용하는 클러스터에 따라 local-storage 의 종류가 다르게 나옵니다. 꼭 컴퓨터에서 kubectl get sc 명령을 통해서 어떤 storage class 명으로 등록되어있는지 조회해보고 등록되어 있는 스토리지 클래스명을 사용하시면 됩니다.
+<br/>
+
+예제용도이고 로컬에서 구동하는 예제이기에 약식으로  local-storage 기반으로 구성했습니다. 실무에서는 NFS 또는 EBS 를 사용하는 경우가 더 많습니다.<br/>
+<br/>
+
+## Deployment 정의
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-cache-deploy
+  namespace: fibonacci
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fibonacci-backend-cache
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-cache
+    spec:
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - name: cache-volume
+          emptyDir:
+            medium: Memory
+        - name: log-volume
+          persistentVolumeClaim:
+            claimName: cache-log-storage-claim
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-cache:0.0.1
+          imagePullPolicy: Always
+          volumeMounts:
+            - mountPath: /fibonacci/logs
+              name: log-volume
+            - mountPath: /fibonacci/cache
+              name: cache-volume
+          env:
+            - name: APP_LANGUAGE
+              valueFrom:
+                configMapKeyRef:
+                  name: fibonacci-cache-config
+                  key: language
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fibonacci-cache-secret
+                  key: api-key
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","sleep 10"]
+          readinessProbe:
+            httpGet:
+              path: /probe/healthcheck
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 1
+            successThreshold: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /probe/healthcheck
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 1
+            failureThreshold: 7
+```
+- spec.volumes 내에 volume 을 하나 추가해줬습니다.
+- volume 의 이름(name)은 log-volume 이라고 정의해줬고, persistentVolumeClame.clameName 을 지정해서 사용하려는 PersistentVolumeClaim 의 이름을 명시했습니다.
+<br/>
+
+## Service 정의 
+지금까지 만든 애플리케이션은 Pod 를 ReplicaSet 단위로 구동하는 Deployment, 볼륨 용도의 PV,PVC, 환경변수를 보관하는 ConfigMap, API Key 를 저장하기 위한 Secret 이라는 리소스를 두루 사용했습니다.<br/>
+
+이렇게 만든 애플리케이션에서 Deployment를 클러스터 안에서 네트워킹을 통해 접근할 수 있는 개체로 만드는 방법은 Service 리소스를 정의하는 것입니다.<br/>
+
+Service 는 Nodeport, ClusterIP 등과 같은 것들이 있고, 자세한 내용은 이번 Github Page 에서 정리하기에는 내용이 다소 길기에 [TODO - http://chagchagchag.github.io/docs-k8s-resources](http://chagchagchag.github.io/docs-k8s-resources) 에 정리해두기로 했습니다. 개념 설명은 [http://chagchagchag.github.io/docs-k8s-resources](http://chagchagchag.github.io/docs-k8s-resources) 을 참고해주시기 바랍니다.<br/>
+<br/>
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: fibonacci-backend-cache-service
+  namespace: fibonacci
+spec:
+  selector:
+    app: fibonacci-backend-cache
+  ports:
+    - protocol: TCP
+      port: 8080
+```
+<br/>
+
+
+간단한 ClusterIP 에 대한 정의입니다. 쿠버네티스는 서비스의 타입을 별도로 지정하지 않으면 디폴트 설정으로 ClusterIP 타입으로 정의됩니다. Cluster IP 라는 단어 그대로 Cluster 내에서의 IP 를 의미하며, 클러스터 내에서만 식별이 가능한 IP 입니다.<br/>
+<br/>
+
+위에서 작성한 Cluster IP 서비스의 이름은 `fibonacci-backend-cache-service` 입니다. 그리고 `spec.selector.app` 에 유입/유출 네트워크를 연결해줄 Deployment 를 연결해줍니다. 위의 예제에서는 Service 가 `fibonacci-backend-cache` 라는 이름의 Deployment 를 연결해주고 있고, 연결할 TCP 포트는 8080 포트임을 명시하고 있습니다.<br/>
+<br/>
+
+## ingress 정의
+ingress 의 역할은 80 포트 또는 443 포트로 유입되는 트래픽을 Service 타입에 바인딩해주는 역할을 합니다. <br/>
+
+<img src="https://raw.githubusercontent.com/chagchagchag/fibonacci-backend-docs/main/static/img/203-BACKEND-CACHE-K8S-YAML/1.png"/>
+
+<br/>
+
+> 만약 클러스터를 외부 트래픽에 대해 80, 443 포트 외의 포트를 개방하고 싶다면 Ingress 대신 NodePort 를 사용하면 됩니다. NodePort 는 30000 ~ 32768 범위의 포트를 허용가능합니다.
+<br/>
+
+```yaml filename="fibonacci-cache-ingress.yml" {3} copy
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fibonacci-ingress
+  namespace: fibonacci
+spec:
+  rules:
+    - http:
+        paths:
+          - pathType: Prefix
+            path: /fibonacci
+            backend:
+              service:
+                name: fibonacci-backend-cache-service
+                port:
+                  number: 8080
+```
+<br/>
+
+## 리소스 정의 YAML 파일 통합
+kustomize 를 사용한다면 이런 작업은 필요가 없겠지만, 단순 yaml 파일 기반으로 작업한다면 위의 yaml 파일들을 모두 순차적으로 실행시켜줘야 합니다.<br/>
+
+이렇게 하면 조금 귀찮아지기에 여기에서는 위의 모든 yaml 리소스 정의를 하나의 파일로 합친 리소스 정의 yaml 을 작성한 부분을 아래에 남겨둡니다.<br/>
+<br/>
+
+```yaml filename="fibonacci-cache.yml" {3} copy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fibonacci
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cache-log-storage-claim
+  namespace: fibonacci
+spec:
+  # kubectl get sc 명령을 통해 나타나는 StorageClass 중 하나를 선택했다.
+  # 로컬에서는 kind 버전에 따라 standard 가 나올수도 있고 local-storage 가 나올수도 있다.
+  storageClassName: standard
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-cache-deploy
+  namespace: fibonacci
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fibonacci-backend-cache
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-cache
+    spec:
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - name: cache-volume
+          emptyDir:
+            medium: Memory
+        - name: log-volume
+          persistentVolumeClaim:
+            claimName: cache-log-storage-claim
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-cache:0.0.1
+          imagePullPolicy: Always
+          volumeMounts:
+            - mountPath: /fibonacci/logs
+              name: log-volume
+            - mountPath: /fibonacci/cache
+              name: cache-volume
+          env:
+            - name: APP_LANGUAGE
+              valueFrom:
+                configMapKeyRef:
+                  name: fibonacci-cache-config
+                  key: language
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fibonacci-cache-secret
+                  key: api-key
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","sleep 10"]
+          readinessProbe:
+            httpGet:
+              path: /probe/healthcheck
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 1
+            successThreshold: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /probe/healthcheck
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 1
+            failureThreshold: 7
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fibonacci-backend-cache-service
+  namespace: fibonacci
+spec:
+  selector:
+    app: fibonacci-backend-cache
+  ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fibonacci-ingress
+  namespace: fibonacci
+spec:
+  rules:
+    - http:
+        paths:
+          - pathType: Prefix
+            path: /fibonacci
+            backend:
+              service:
+                name: fibonacci-backend-cache-service
+                port:
+                  number: 8080
+```
+<br/>
+
+이제 kubectl 을 통해 적용해봅니다.
+```bash filename="bash" {3} copy
+$ kubectl apply -f fibonacci-cache.yml
+namespace/fibonacci created
+persistentvolumeclaim/cache-log-storage-claim created
+deployment.apps/fibonacci-backend-cache-deploy created
+service/fibonacci-backend-cache-service created
+ingress.networking.k8s.io/fibonacci-ingress created
+```
+<br/>
+
+생성된 리소스들을 확인해봅니다.
+```bash filename="bash" {3} copy
+$ kubectl -n fibonacci get all
+NAME                                                  READY   STATUS                       RESTARTS   AGE
+pod/fibonacci-backend-cache-deploy-57558f6b5d-65kbl   0/1     CreateContainerConfigError   0          32s
+pod/fibonacci-backend-cache-deploy-57558f6b5d-8274h   0/1     CreateContainerConfigError   0          32s
+
+NAME                                      TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)    AGE
+service/fibonacci-backend-cache-service   ClusterIP   10.96.29.34   <none>        8080/TCP   32s
+
+NAME                                             READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/fibonacci-backend-cache-deploy   0/2     2            0           32s
+
+NAME                                                        DESIRED   CURRENT   READY   AGE
+replicaset.apps/fibonacci-backend-cache-deploy-57558f6b5d   2         2         0       32s
+```
+<br/>
+
+생성한 리소스들을 삭제하려면 아래와 같이 `kubectl delete -f ` 를 해줍니다.
+```bash filename="bash" {3} copy
+$ kubectl delete -f fibonacci-cache.yml
+namespace "fibonacci" deleted
+persistentvolumeclaim "cache-log-storage-claim" deleted
+deployment.apps "fibonacci-backend-cache-deploy" deleted
+service "fibonacci-backend-cache-service" deleted
+ingress.networking.k8s.io "fibonacci-ingress" deleted
+```
