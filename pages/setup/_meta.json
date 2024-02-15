@@ -1,0 +1,6 @@
+{
+    "local-k8s-setup": "로컬 k8s 셋업",
+    "deploy-environment": "배포환경",
+    "redis-environment": "레디스 환경설정",
+    "reference": "참고한 스터디 자료들"
+}

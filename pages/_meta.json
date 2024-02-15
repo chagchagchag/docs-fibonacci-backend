@@ -1,11 +1,8 @@
 {
   "index": "Introduction",
-  "another": "Another Page",
-  "advanced": "Advanced (A Folder)",
-  "about": {
-    "title": "About",
-    "type": "page"
-  },
+  "setup": "SETUP",
+  "fibonacci-backend-cache": "fibonacci-backend-cache",
+  "fibonacci-backend-web": "fibonacci-backend-web",
   "contact": {
     "title": "Contact ↗",
     "type": "page",
