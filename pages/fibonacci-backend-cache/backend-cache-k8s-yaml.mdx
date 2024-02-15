@@ -1,31 +1,31 @@
 ## k8s 리소스 정의 & 로컬 k8s 확인
 
-시크릿 리소스를 정의하고 사용하는 부분에서는 api-key 를 시크릿에 정의해서 사용합니다. 사실 api-key 를 Secret 에서 정의해두고 단 하나의 api-key 만으로 검사를 한다는 것은 조금 이상해보일 수도 있고 언뜻 예제가 이해가 안갈 수 있습니다.<br>
+시크릿 리소스를 정의하고 사용하는 부분에서는 api-key 를 시크릿에 정의해서 사용합니다. 사실 api-key 를 Secret 에서 정의해두고 단 하나의 api-key 만으로 검사를 한다는 것은 조금 이상해보일 수도 있고 언뜻 예제가 이해가 안갈 수 있습니다.<br/>
 
 하지만, `fibonacci-backend-cache` 에서 다양한 쿠버네티스 리소스를 모두 다뤄보려 하다보니 시크릿을 사용하는 기능을 추가해서 억지로 끼워맞췄다는 점을 이해해주시기 바랍니다. 
-<br>
+<br/>
 
 ## 들어가기 전에..
-이번 페이지는 ArgoCD나 이런 것들을 설치하지 않은 간단한 버전의 클러스터를 기준으로 리소스들을 kubectl 로 하나 하나 만들어가면서 테스트해가면서 기능들을 완성하는 과정을 설명하기 위한 것이 목적입니다.<br>
+이번 페이지는 ArgoCD나 이런 것들을 설치하지 않은 간단한 버전의 클러스터를 기준으로 리소스들을 kubectl 로 하나 하나 만들어가면서 테스트해가면서 기능들을 완성하는 과정을 설명하기 위한 것이 목적입니다.<br/>
 
-이번에 사용할 클러스터 정의는 `cluster/single-cluster.yml` 에 있고, 쉘스크립트는 `cluster/create-single-cluster.sh` 입니다.<br>
-<br>
+이번에 사용할 클러스터 정의는 `cluster/single-cluster.yml` 에 있고, 쉘스크립트는 `cluster/create-single-cluster.sh` 입니다.<br/>
+<br/>
 
 ## namespace 정의
-예제 테스트를 위한 namespace를 정의합니다. namespace 는 `fibonacci` 입니다.<br>
+예제 테스트를 위한 namespace를 정의합니다. namespace 는 `fibonacci` 입니다.<br/>
 
 ```bash
 $ kubectl create ns fibonacci
 namespace/fibonacci created
 ```
-<br>
+<br/>
 
 ## Secret 정의
 먼저 api 키를 정의합니다. 
 ```bash
 kubectl -n fibonacci create secret generic fibonacci-backend-cache-secret --from-literal=api-key=abcd-efgh-ijkl-1111
 ```
-<br>
+<br/>
 
 이렇게 생성한 시크릿은 아래와 같이 확인 가능합니다.
 ```bash
@@ -45,27 +45,27 @@ metadata:
   uid: 2f641720-ee50-4223-8120-639ac984524c
 type: Opaque
 ```
-<br>
+<br/>
 
 만약 이미 배포되어있는 secret 내의 속성값의 디코딩 된 실제 값을 알고 싶다면 아래와 같이 base64 decoding 을 해주면 됩니다.
 ```bash
 $ echo "YWJjZC1lZmdoLWlqa2wtMTExMQ==" | base64 -d
 abcd-efgh-ijkl-1111
 ```
-<br>
+<br/>
 
 혹시 평문 문자열이 시크릿 안에 들어갔을 때 어떻게 변하는지 확인하고 싶다면 아래와 같이 -n 옵션을 주어서 개행문자를 제거한 문자열에 대해 base64 인코딩을 해줍니다.
 ```bash
 $ echo -n "abcd-efgh-ijkl-1111" | base64
 YWJjZC1lZmdoLWlqa2wtMTExMQ==
 ```
-<br>
--n 옵션이 없으면 개행문자가 추가된 상태로 출력됩니다.<br>
-<br>
+<br/>
+-n 옵션이 없으면 개행문자가 추가된 상태로 출력됩니다.<br/>
+<br/>
 
 ## ConfigMap 정의
-이번에는 ConfigMap 을 정의해봅니다.<br>
-`fibonacci-cache-config.yml`<br>
+이번에는 ConfigMap 을 정의해봅니다.<br/>
+`fibonacci-cache-config.yml`<br/>
 ```yaml
 apiVersion: v1
 kind: ConfigMap
@@ -75,18 +75,18 @@ metadata:
 data:
   language: "ko"
 ```
-<br>
+<br/>
 
 `data.language`
 - `data.language` 라는 속성에 대한 값으로 `ko` 라는 값을 지정했습니다.
-<br>
+<br/>
 
 이렇게 지정한 configmap 을 클러스터 내에 리소스로 생성되게끔 kubectl 로 요청해봅니다.
 ```bash
 $ kubectl apply -f fibonacci-cache-config.yml
 configmap/fibonacci-cache-config created
 ```
-<br>
+<br/>
 
 생성되었는지 확인
 ```bash
@@ -109,7 +109,7 @@ metadata:
   resourceVersion: "8711"
   uid: 98d6a65b-4eeb-4ca5-8f0c-c23ac35bb479
 ```
-<br>
+<br/>
 
 ## PV, PVC 정의
 pv, pvc 를 이용해서 로그를 파일로 작성하는 예제입니다<br/>

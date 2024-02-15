@@ -64,7 +64,7 @@ public class FibonacciCacheController {
     }
 }
 ```
-<br>
+<br/>
 
 1\) `${fibonacci.language}`, `${fibonacci.api-key}`
 - 쿠버네티스 레벨에서 주입한 환경변수입니다. Pod 내에서는 ConfigMap 에 선언한 설정변수를 환경변수로 주입받고, Pod 내에서 Docker Container 로 동작하는 `fibonacci-backend-cache` 모듈 내에서는 `application.yml` 파일 내에서 아래와 같이 환경변수를 주입받고 있습니다.
@@ -78,7 +78,7 @@ spring:
       host: redis-service.default.svc.cluster.local
       port: 6379
 ```
-<br>
+<br/>
 
 ## FibonacciResultCacheService
 ```java
@@ -113,7 +113,7 @@ public class FibonacciResultCacheService {
     }
 }
 ```
-<br>
+<br/>
 
 
 ## FibonacciCalculateRestClient
@@ -140,7 +140,7 @@ public class FibonacciCalculateRestClient {
 - 같은 클러스터 내에 같은 namespace 에 존재하는 다른 Deployment 를 호출할 때는 그 Deployment 가 속한 Service 의 이름을 지정하는 것만으로 호출이 가능합니다.
 - `fibonacci-backend-web-service` 는 `fibonacci-backend-web-deploy` 라는 디플로이먼트의 네트워킹을 위한 서비스입니다.
 - `fibonacci-backend-deploy`는 `fibonacci-backend-web` 모듈을 `Deployment` 로 배포하는 리소스입니다. `fibonacc-backend-web` 모듈은 fibonacci 계산을 Top Down 방식으로 계산하는 `/fibonacci` API를 가지고 있고, `fibonacci-backend-cache` 에서 호출합니다.
-<br>
+<br/>
 
 
 ## Probe (헬스체크) 
