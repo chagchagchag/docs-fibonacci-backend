@@ -1,0 +1,9 @@
+{
+    "introduce-fibonacci-backend-web": "소개",
+    "backend-web-coding": "Backend 코드 작업",
+    "backend-web-jib-build": "Gradle Jib 빌드 정의, 이미지 생성, 푸시",
+    "backend-web-k8s-yaml": "k8s 리소스 정의 & 로컬 k8s 확인",
+    "backend-web-kustomize": "Kustomize Overlay 작업",
+    "backend-web-graceful-shutdown": "Graceful Shutdown 처리",
+    "backend-web-perf-test": "부하테스트"
+}
