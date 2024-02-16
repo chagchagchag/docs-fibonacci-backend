@@ -18,7 +18,7 @@ Java/Kotlin 애플리케이션의 Gradle 빌드 시 두가지를 선택할 수 �
 
 ## Gradle Jib 으로 Docker 이미지 빌드 & 푸시
 ### plugin 추가
-```groovy
+```groovy filename="build.gradle" {0} copy
 plugins {
     // ...
 	id 'com.google.cloud.tools.jib' version '3.4.0'
@@ -36,7 +36,7 @@ plugins {
 <br/>
 
 ### 빌드스크립트 작성
-```groovy
+```groovy filename="build.gradle" {0} copy
 jib {
 	from {
 		image = "amazoncorretto:17"
@@ -58,7 +58,7 @@ jib {
 젠킨스나 Github CI에서 빌드하는 것이 아닌 경우 개발자의 PC에 따라 CPU 가 달라지는 것으로 인해 애플 M1 등 여러가지 빌드 옵션을 직접 추가하거나 이런 작업들이 필요한 경우가 있습니다.
 
 이런 경우 jib 내의 from 구문에 아래와 같은 내용을 작성해주시면 됩니다.
-```groovy
+```groovy filename="build.gradle" {0} copy
 // ...
 
 jib {

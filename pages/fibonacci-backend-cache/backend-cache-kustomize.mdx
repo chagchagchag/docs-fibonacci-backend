@@ -1,3 +1,56 @@
 ## Kustomize Overlay 작업
+> 코드작업은 정말 빠르게 하고 쉬웠는데, 문서작업은 왜 이렇게 힘든걸까요? ㅠㅠ
+<br/>
+
+## 깃헙 리포지터리
+여기서 정리하는 내용들은 [github.com/chagchagchag/fibonacci-backend](https://github.com/chagchagchag/fibonacci-backend) 내의 [fibonacci-backend/k8s/kustomize](https://github.com/chagchagchag/fibonacci-backend/tree/main/k8s/kustomize) 디렉터리에 있는 내용들입니다.<br/>
+
+## Secret 
+[fibonacci-backend/k8s/kustomize](https://github.com/chagchagchag/fibonacci-backend/tree/main/k8s/kustomize) 디렉터리 내의 `create-secret.sh` 파일에 대한 내용입니다.<br/>
+
+kustomize 를 적용하기에 앞서서 아래의 내용을 적용해줍니다.
+```bash
+kubectl -n fibonacci create secret generic fibonacci-cache-secret --from-literal=api-key=abcd-efgh-ijkl-1111
+```
+<br/>
+
+## Redis
+[fibonacci-backend/k8s/kustomize](https://github.com/chagchagchag/fibonacci-backend/tree/main/k8s/kustomize) 디렉터리 내의 `create-redis.sh` 파일에 대한 내용입니다.<br/>
+redis 가 설치되어 있지 않다면 아래의 내용을 적용해줍니다.
+```bash
+kubectl apply -f redis-service.yml
+kubectl apply -f redis-pod.yml
+```
+<br/>
+
+## fibonacci-backend-cache 의 kustomize 작업
+
+대략적인 구조는 이렇습니다.<br/>
+![](./img/kustomize/1.png)
+<br/>
+
+`base` 디렉터리
+- 기본적인 리소스 들의 정의 파일들을 둡니다.
+- 이렇게 정의된 파일들을 `base` 디렉터리 내에서 kustomize 하는 역할을 하는 파일은 `kustomization.yml` 입니다.
+<br/>
+
+`overlay` 디렉터리
+- `overlay/develop` 디렉터리
+  - `base/kustomization.yml` 파일에서 조합한 리소스파일 들에서 `tag`, `namespace`를 `develop` 에 맞게끔 덮어쓰는 작업을 합니다.
+  - `overlay/develop/kustomization.yml` 파일에서 따로 `develop` 버전에 맞도록 재정의한 `namespace`, `tag` 등이 적용되어 재정의됩니다.
+- `overlay/production` 디렉터리
+  - `base/kustomization.yml` 파일에서 조합한 리소스파일 들에서 `tag`, `namespace`를 `production` 에 맞게끔 덮어쓰는 작업을 합니다.
+  - `overlay/production/kustomization.yml` 파일에서 따로 `production` 버전에 맞도록 재정의한 `namespace`, `tag` 등이 적용되어 재정의됩니다.<br/>
+
+## 리소스 파일들
+설명 꽤 복잡한돼 힘든돼 아 정말...
+
+
+
+
+
+
+
+
 
 
