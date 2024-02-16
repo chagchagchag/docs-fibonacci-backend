@@ -1,1 +1,106 @@
 ## Backend 코드 작업
+
+## FibonacciController 
+```java filename="FibonacciController.java" {0} copy
+@RestController
+public class FibonacciController {
+
+    private final FibonacciService fibonacciService;
+
+    public FibonacciController(FibonacciService fibonacciService){
+        this.fibonacciService = fibonacciService;
+    }
+
+    @GetMapping("/fibonacci")
+    public ResponseEntity<BigDecimal> getFibonacci(
+            @RequestParam("number") int number
+    ){
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(fibonacciService.getFibonacci(number));
+    }
+
+}
+```
+<br/>
+
+## FibonacciService 
+```java filename="FibonacciService.java" {0} copy
+@Service
+public class FibonacciService {
+
+    private final StringRedisTemplate stringRedisTemplate;
+
+    public FibonacciService(StringRedisTemplate stringRedisTemplate){
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
+
+    private final Map<Integer, BigDecimal> dp = new HashMap<>();
+    private static final String QUEUE_HASH_KEY = "fibonacci:task-queue";
+    private static final String SET_HASH_KEY = "fibonacci:result-set";
+
+    public BigDecimal getFibonacci(int number) {
+        if(number == 0) return BigDecimal.ZERO;
+        else if(number == 1) return BigDecimal.ONE;
+        else if(number == 2) return BigDecimal.ONE;
+        else{
+            if(dp.containsKey(number)) return dp.get(number);
+
+            dp.put(number, getFibonacci(number-2).add(getFibonacci(number-1)));
+
+            return dp.get(number);
+        }
+    }
+
+    // **TODO** : 'fibonacci-backend-batch' 로 아래 기능을 이관 예정.
+    @Scheduled(fixedDelay = 1000L)
+    public void scheduledCalculateFibonacci(){
+        if(Boolean.TRUE.equals(stringRedisTemplate.hasKey(QUEUE_HASH_KEY))){
+            Optional
+                .ofNullable(stringRedisTemplate.opsForSet().pop(QUEUE_HASH_KEY))
+                .ifPresent(cachedRequest -> {
+                    BigDecimal result = getFibonacci(Integer.parseInt(cachedRequest));
+                    stringRedisTemplate.opsForHash()
+                            .put(
+                                SET_HASH_KEY,
+                                cachedRequest,
+                                result.toPlainString()
+                            );
+                });
+        }
+    }
+
+}
+```
+<br/>
+
+## Probe (헬스체크) - HealthCheckController 
+probe 용도의 Controller 입니다. Probe 관련된 개념들은 이 깃헙 문서 내의 별도의 문서에 따로 개념정리를 해둘 예정입니다.
+
+```java filename="HealthCheckController.java" {0} copy
+@RestController
+@RequestMapping("/probe")
+public class HealthCheckController {
+
+    private final Logger logger = LoggerFactory.getLogger(HealthCheckController.class);
+
+    @GetMapping("/startup")
+    public String startupCheck(){
+        logger.info("[startup probe] >>> OK");
+        return "START UP OK";
+    }
+
+    @GetMapping("/ready")
+    public String readinessCheck(){
+        logger.info("[readiness probe] >>> OK");
+        return "READY OK";
+    }
+
+    @GetMapping("/live")
+    public String livenessCheck(){
+        logger.info("[liveness probe] >>> OK");
+        return "OK";
+    }
+
+}
+```
