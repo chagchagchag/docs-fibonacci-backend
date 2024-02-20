@@ -1,1 +1,263 @@
 ## k8s 리소스 정의 & 로컬 k8s 확인
+
+`fibonacci-backend-web` 에 비해 단순한 구조로 작성했습니다.<br/>
+
+## 들어가기 전에..
+이번 페이지는 ArgoCD나 이런 것들을 설치하지 않은 간단한 버전의 클러스터를 기준으로 리소스들을 kubectl 로 하나 하나 만들어가면서 테스트해가면서 기능들을 완성하는 과정을 설명하기 위한 것이 목적입니다.<br/>
+
+이번 backend 예제를 구동할 kind 클러스터 정의는 `cluster/single-cluster.yml` 에 있고, 쉘스크립트는 `cluster/create-single-cluster.sh` 입니다.<br/>
+
+- [cluster/single-cluster.yml](https://github.com/chagchagchag/fibonacci-backend/blob/main/cluster/single-cluster.yml)
+- [cluster/create-single-cluster.sh](https://github.com/chagchagchag/fibonacci-backend/blob/main/cluster/create-single-cluster.sh)
+
+<br/>
+
+## namespace 정의
+namespace가 존재하지 않는다면 예제 테스트를 위한 namespace를 정의합니다. namespace 는 `fibonacci` 입니다.<br/>
+
+```bash
+$ kubectl create ns fibonacci
+namespace/fibonacci created
+```
+<br/>
+
+또는 아래의 namespace 파일을 적용해줍니다.
+```yaml filenmae="fibonacci-web-namespace.yml" {0} copy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fibonacci
+```
+<br/>
+
+```bash
+$ kubectl apply -f fibonacci-web-namespace.yml
+```
+<br/>
+
+
+## Deployment 정의
+Deployment 의 내용은 아래와 같습니다. 자세한 설명은 추후 추가하도록 하겠습니다.
+```yaml filename="fibonacci-web-deploy.yml" {0} copy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-web-deploy
+  namespace: fibonacci
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fibonacci-backend-web
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-web
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-web:0.0.1
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "1000m"
+            limits:
+              memory: "1Gi"
+              cpu: "1500m"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","sleep 10"]
+          startupProbe:
+            httpGet:
+              path: /probe/startup
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /probe/ready
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /probe/live
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            failureThreshold: 10
+```
+<br/>
+
+## Service 정의
+Service 정의 입니다. 클러스터 내부에서 8080 포트에 대해 `fibonacc-backend-web` Deployment를 찾아서 연결해줍니다. 별도의 Service Type 을 명시하지 않았기에 Cluster IP 타입의 서비스 타입으로 명시되었음을 확인 가능합니다.
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: fibonacci-backend-web-service
+  namespace: fibonacci
+spec:
+  selector:
+    app: fibonacci-backend-web
+  ports:
+    - protocol: TCP
+      port: 8080
+```
+<br/>
+
+## HPA 정의 
+HPA 는 Horizontal Pot Autoscaling 의 약자이며, 오토스케일링과 관련된 쿠버네티스 리소스입니다. 
+- [쿠버네티스 문서 - Horizontal Pod Autoscaling](https://kubernetes.io/ko/docs/tasks/run-application/horizontal-pod-autoscale/)
+<br/>
+
+자세한 설명은 별도의 섹션에서 개념설명을 요약할 예정이고, 이번 문서에서는 리소스 정의 파일만을 간단하게 남겨두고 넘어가기로 했습니다.
+```yaml filename="backend-web-hpa.yml" {0} copy
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fibonacci-backend-hpa
+  namespace: fibonacci
+spec:
+  minReplicas: 2
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fibonacci-backend-web
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 30
+```
+<br/>
+
+### 통합된 리소스 yaml 파일
+kustomize 를 통해서 조금 더 편하게 할수도 있겠지만, 이번 실습에서는 하나의 yaml 파일에 합쳐둔 통합 yaml 파일을 적용하는 과정을 살펴봅니다.
+
+통합된 yaml 파일의 내용은 아래와 같습니다.<br/>
+
+```yaml filename="fibonacci-web.yml" {0} copy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fibonacci
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fibonacci-backend-hpa
+  namespace: fibonacci
+spec:
+  minReplicas: 2
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fibonacci-backend-web
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fibonacci-backend-web-service
+  namespace: fibonacci
+spec:
+  selector:
+    app: fibonacci-backend-web
+  ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-web-deploy
+  namespace: fibonacci
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fibonacci-backend-web
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-web
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-web:0.0.1
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "1000m"
+            limits:
+              memory: "1Gi"
+              cpu: "1500m"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","sleep 10"]
+          startupProbe:
+            httpGet:
+              path: /probe/startup
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /probe/ready
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /probe/live
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            failureThreshold: 10
+
+```
+<br/>
+
