@@ -1,0 +1,91 @@
+## HPA 정의 및 테스트, 모니터링
+> 귀찮고 손이 많이 가는 문서작업이어서 건너뛰려 했는데 결국은 했어야 할 문서작업이었군!!! 하는 생각이 들어서 정리를 시작!! 합니다.<br/>
+
+## metrics-server 설치
+[`metrics-server`](https://github.com/kubernetes-sigs/metrics-server) 는 k8s 플랫폼마다 기본으로 설치된 곳도 있고 아닌 플랫폼도 있습니다. 로컬 클러스터인 [`kind` 클러스터](https://kind.sigs.k8s.io/)에서도 설치가 되어있는지 확인이 필요합니다.<br/>
+
+클러스터 내에 `metrics-server`가 설치되었는지 확인을 합니다.
+```bash filename="bash" {0} copy
+$ kubectl top nodes
+error: Metrics API not available
+```
+<br/>
+
+`metrics-server` 가 설치되어 있지 않습니다. [`metrics-server`](https://github.com/kubernetes-sigs/metrics-server) 에 방문해서 `metrics-server`를 설치합니다.<br/>
+
+[metrics-server#installation](https://github.com/kubernetes-sigs/metrics-server?tab=readme-ov-file#installation)에서는 metrics-server 를 설치하는 명령어를 알려주고 있습니다. 이 명령어를 복사해서 쿠버네티스 클러스터에 적용해줍니다.<br/>
+
+```bash filename="bash" {0} copy
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+<br/>
+
+이렇게 설치를 해도 아래와 같이 `kubectl top nodes` 로 현황을 확인해도 에러 메시지가 나타나는 경우가 있습니다.
+```bash filename="bash" {0} copy
+$ kubectl top nodes
+error: Metrics API not available
+```
+<br/>
+
+이 경우 아래와 같이 metrics-server 라는 이름의 deployment 를 수정하는 명령어를 실행해줍니다.
+```bash filename="bash" {0} copy
+```
+<br/>
+
+그리고 나타나는 시스템 에디터에서는 insecure 옵션을 추가해준 후 저장합니다.
+![](./img/BACKEND-WEB-HPA/1.png)
+<br/>
+
+설치가 잘 되었는지 확인해봅니다. 결과를 보니 잘 설치되었습니다. (제일 아래줄에 `metrics-server-796fbd6c9d-29hdz` 을 확인 가능)
+```bash filename="bash" {0} copy
+$ kubectl -n kube-system get pods
+NAME                                                      READY   STATUS    RESTARTS   AGE
+coredns-5d78c9869d-hx9td                                  1/1     Running   0          48m
+coredns-5d78c9869d-stjkw                                  1/1     Running   0          48m
+etcd-fibonacci-cluster-control-plane                      1/1     Running   0          48m
+kindnet-rzptz                                             1/1     Running   0          48m
+kindnet-vhxbz                                             1/1     Running   0          48m
+kube-apiserver-fibonacci-cluster-control-plane            1/1     Running   0          48m
+kube-controller-manager-fibonacci-cluster-control-plane   1/1     Running   0          48m
+kube-proxy-m46jh                                          1/1     Running   0          48m
+kube-proxy-mtrtz                                          1/1     Running   0          48m
+kube-scheduler-fibonacci-cluster-control-plane            1/1     Running   0          48m
+metrics-server-796fbd6c9d-29hdz                           1/1     Running   0          23s
+```
+<br/>
+
+`kubectl top nodes` 명령을 통해 지표들이 수집되는지 확인해봅니다.
+```bash filename="bash" {0} copy
+$ kubectl top nodes
+NAME                              CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+fibonacci-cluster-control-plane   144m         0%     1213Mi          6%
+fibonacci-cluster-worker          29m          0%     283Mi           1%
+```
+<br/>
+
+## `fibonacci-backend-web` 에 지연이 발생하는 코드를 추가
+
+## spring boot 톰캣 스레드 풀 사이즈 수정
+메모리가 부족한 상황을 가정하기 위해 스프링 부트 톰캣 스레드 풀의 사이즈를 10으로 수정합니다. 스프링 부트 톰캣 스레드 풀의 기본사이즈는 200 입니다.<br/>
+
+## requests, limits 수정
+파드의 스펙을 아래와 같이 수정해줍니다.
+- memory 
+  - requests : "512Mi"
+  - limits : "1Gi"
+- cpu 
+  - requests: "1000m"
+  - limits: "1500m"
+<br/>
+
+```yaml filename="fibonacci-backend-hpa.yaml" {0} copy
+```
+<br/>
+
+
+## 낮춘 서버 사양에 맞도록 각 프로브의 `initialDelaySeconds` 수정
+- 서버사양을 낮춘 만큼 부팅이 늦어질 가능성이 높기 때문에 Redyness 프로브, Startup 프로브의 `initialDelaySeconds` 를 아래와 같이 수정해줍니다.
+<br/>
+
+
+
