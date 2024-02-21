@@ -129,6 +129,36 @@ spec:
 - 위의 예제에서는 spec.metrics[0] 가 cpu 타입인데 여기에 대해 averageUtilization 을 50으로 정의했다는 것은 평균적인 CPU 점유율이 50%가 되어야 함을 의미한다.
 <br/>
 
-## 오토스케일러의 Pod(파드) 수량 결정 방식
+## `averageUtilization` 기반 스케일링 
+오토스케일러가 파드(Pod)의 수량을 결정하는 공식은 아래와 같다. (생각보다 단순한 방식의 계산이다)
+- `desiredReplicas = ceil(currentReplica * (CurrentPodUtilization/Target))`
 <br/>
-휴 힘들구만.
+
+`(CurrentPodUtilization/Target)`<br/>
+`CurrentPodUtilization` 은 전체 파드가 사용하고 있는 자원 사용량의 평균이다.<br/> 
+그리고 `CurrentPodUtilization` 을 `Target`(목표 자원사용량) 으로 나눈다.<br/>
+<br/>
+
+`currentReplica * (CurrentPodUtilization/Target)`<br/>
+위에서 구한 `(CurrentPodUtilization/Target)` 에 현재 레플리카로 기동된 Pod 의 개수를 곱해준다.<br/>
+<br/>
+
+`ceil(currentReplica * (CurrentPodUtilization/Target))`<br/>
+`currentReplica * (CurrentPodUtilization/Target)` 을 올림처리한다. 이렇게 구해진 수치가 파드의 Autoscaling 에 적용되는 `averateUtilization` 값이 된다.
+<br/>
+
+이 과정을 예를 들어서 그림으로 표현해보면 아래와 같다.
+![](./img/scaling-overview/average-utilization-1.png)
+<br/>
+
+### 목표 자원사용량을 넘어서도 그대로 유지되는 경우
+maxReplicas = 3 이고 averageUtilization = 50 일때 Pod 2기가 각각 90%, 70% 의 CPU를 점유한 상황을 살펴보면 아래와 같다.<br/>
+![](./img/scaling-overview/average-utilization-2.png)
+<br/>
+
+### 파드의 수량을 축소하는 경우
+maxReplicas = 3 이고 averageUtilization = 50 일때 Pod 2기가 각각 20%, 15%, 10% 의 CPU를 점유한 상황을 살펴보면 아래와 같다.<br/>
+![](./img/scaling-overview/average-utilization-3.png)
+<br/>
+
+## HorizontalPodAutoScaler 사용시 주의점
