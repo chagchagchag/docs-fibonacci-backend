@@ -111,6 +111,17 @@ spec:
 <br/>
 
 4\) metrics
+- Autoscaling 을 할 때 기준이 될 수 있는 자원과 그 기준값을 지정할 때 사용된다.
+- v1 에서는 target.averageUtilization 라는 CPU 퍼센트를 간편하게 지정하는 용도로 사용되는 경우가 많았지만 CPU 의 다른 요소들을 설정하는 것이 복잡한 편이었다. 
+- v2 에서는 `Resource` 라는 타입을 별개의 타입으로 지정해서 사용할 수 있게 되었고 v2 에서 일반적으로 사용하는 메트릭은 `cpu`, `Memory` 가 보편적이고 이 외에 메트릭이 필요할 때는 커스텀 설정을 통해 추가가 가능하다. 예를 들면 ingress 에서 들어오는 트래픽을 기준으로 파드의 스케일링 설정이 가능하다.
+- target 에 지정한 `Utilization` 이라는 타입은 절대적인 수치나 전체적으로 자원을 사용하는 비율이라든지 이런 것들을 지정할 수 있다. 단위는 `%` 단위로 입력한다.
+- `averageUtilization` 은 예를 들면 이런 개념이다. "파드 들의 평균적인 CPU 사용량이 `50%` 를 넘지 않으면서 최소 50% 를 소비했으면 한다" 는 요구조건이 있다면 `averageUtilization` 을 50 (%) 로 지정하는 편이다.
+<br/>
+
+참고\) Utilization 관련한 자료들은 아래의 자료들이 있다.
+- [쿠버네티스 CPU, Memory 관리하기(feat. 사용량 확인, limit, 리소스 모니터링)](https://ltlkodae.tistory.com/41)
+- [쿠버네티스 (Kubernetes) 배포를 위한 고급설정](https://ltlkodae.tistory.com/41)
+
 <br/>
 
 5\) averageUtilization
@@ -118,3 +129,6 @@ spec:
 - 위의 예제에서는 spec.metrics[0] 가 cpu 타입인데 여기에 대해 averageUtilization 을 50으로 정의했다는 것은 평균적인 CPU 점유율이 50%가 되어야 함을 의미한다.
 <br/>
 
+## 오토스케일러의 Pod(파드) 수량 결정 방식
+<br/>
+휴 힘들구만.
