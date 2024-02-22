@@ -1,0 +1,143 @@
+## PV, PVC
+
+## 참고자료
+- [Kubernetes - Volumes](https://kubernetes.io/docs/concepts/storage/volumes/)
+- [핵심만 콕! 쿠버네티스](https://ebook-product.kyobobook.co.kr/dig/epd/ebook/E000002955305)
+<br/>
+
+## PV, PVC
+쿠버네티스에서는 데이터 저장소를 프로비저닝 쿠버네티스에서는 데이터 저장소를 프로비저닝(Provisioning(제공))하는 부분과 저장소를 사용하는 부분으로 분류합니다. PV는 프로비저닝을 담당하고, PVC는 저장소를 사용하는 역할을 합니다.<br/>
+즉, PV를 하나의 볼륨으로만 인식할 뿐이고, PVC를 거쳐서 PV에 Read/Write 를 수행합니다.<br/>
+PV 로 특정 볼륨을 마운트한 컨테이너는 새로운 노드에서 컨테이너/파드가 새로 기동되더라도 PV 볼륨에 저장된 데이터를 이어서 계속 사용가능합니다.<br/>
+<br/>
+
+PV 는 hostPath 기반으로 선언할 수도 있고, NFS 기반으로 선언할 수도 있고, AWSElasticBlockStore PV 로도 선언할 수 있습니다.<br/>
+이 외에도 다양한 방식으로 사용될 수 있는데 아래와 같은 다양한 방벋들이 있습니다.
+- azureDisk : Azure 클라우드 플랫폼에서 제공하는 볼륨 서비스
+- emptyDir : Pod 레벨에서의 볼륨개념이다. 주로 같은 Pod 내 컨테이너 들 끼리 filesystem을 통한 정보를 주고받을때 많이 사용한다.
+- downward API
+- configMap 
+<br/>
+
+AWS 클라우드 플랫폼 기반이라면 가장 선호되는 방식은 AWSElasticBlockStore 방식이겠지만, 경우에 따라 취사선택을 하는 경우가 많습니다.<br/>
+클라우드에서 제공하는 볼륨 서비스로는 GCP플랫폼에서는 `PersistentDisk`, AWS플랫폼에서는 `EBS(Elastic Bock Storage)` 라는 볼륨을 사용하는 방식이 있습니다.<br/>
+<br/>
+
+PVC 는 Persistent Volume Claim 의 약자로 PV 리소스를 요청하는 역할을 수행합니다. 클러스터 관리자가 PersistentVolume 을 통해 데이터 저장소를 준비하면 쿠버네티스 사용자(애플리케이션 개발자)가 PVC 요청을 통해 해당 리소스를 선점합니다.<br/>
+<br/>
+
+![](./img/PV-PVC/pvc.png)
+<br/>
+
+## PV, PVC 리소스 선언
+PV
+- `kind` 를 `PersistentVolume` 으로 선언하고 세부적인 `spec` 내에 용량은 어느 정도로 할지 액세스 모드는 어떻게 할 것인지를 명시해서 하나의 리소스로 정의합니다.<br/>
+- `spec.capacity.storage` 에 지정하는 저장 단위는 Gi, Mi 가 있다.<br/>
+<br/>
+
+PVC
+- `spec.storageClassName` 에 어떤 종류의 저장소 타입을 지정할지를 지정합니다.
+- `spec.resources[i].requests.storage` 에 어느 정도의 크기의 저장소를 지정할지를 명시합니다.
+- `spec.accessModes` 에는 접근 모드를 설정합니다. NFS 를 사용할 경우 `ReadWirteMany`를 사용하기도 합니다.
+<br/>
+
+### hostPath PV, PVC 예제
+```yaml filename="hostpath-pv.yaml" {3} copy
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: k8shelloboot-pv-hostpath
+spec:
+  storageClassName: manual # 저장소 타입 지정
+  capacity: # 저장소 크기 
+    storage: 500Mi
+  accessModes: # 접근 모드 
+    - ReadWriteOnce # 동시에 1개의 파드만 볼륨에 접근할 수 있다
+  hostPath:
+    path: /run/desktop/mnt/host/v/000.env/volume
+```
+<br/>
+
+이렇게 만든 PV 는 아래와 같이 확인 가능합니다.
+```bash filename="bash" {3} copy
+$ kubectl get pv
+NAME                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+k8shelloboot-pv-hostpath   500Mi      RWO            Retain           Available           manual                  4s
+```
+<br/>
+
+이번에는 PVC 를 생성합니다.
+```yaml filename="k8shelloboot-pvc-hostpath.yaml" {3} copy
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: k8shelloboot-pvc-hostpath
+spec:
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 500Mi
+  accessModes:
+    - ReadWriteOnce
+```
+<br/>
+
+생성한 PVC 를 적용해봅니다.
+```bash filename="bash" {3} copy
+$ kubectl apply -f k8shelloboot-pvc-hostpath.yml
+persistentvolumeclaim/k8shelloboot-pvc-hostpath created
+```
+<br/>
+
+이번에는 PV가 잘 연결되었는지 확인해봅니다.
+```bash filename="bash" {3} copy
+$ kubectl get pv
+NAME                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                               STORAGECLASS   REASON   AGE
+k8shelloboot-pv-hostpath   500Mi      RWO            Retain           Bound    default/k8shelloboot-pvc-hostpath   manual                  3m1s
+```
+<br/>
+
+PVC 연결 전에는 STATUS 가 `Available` 였는데 연결 후에는 STATUS가 `Bound` 로 변한 것을 확인 가능합니다.<br/>
+<br/>
+
+### NFS PV, PVC 예제
+nfs 는 StorageClass 와 [nfs-server-provisioner](https://artifacthub.io/packages/helm/kvaps/nfs-server-provisioner) 를 이용한 실습이 가능한데, 이 것에 대해서는 나중에 정리해둘 예정이고, 일단은 PV 리소스 정의를 어떻게 하는지만 정리해두었습니다.
+```yaml filename="nfs-pv.yaml" {3} copy
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: k8shello-pv-nfs
+spec:
+  storageClassName: nfs # 저장소 타입 지정
+  capacity: # 저장소 크기 지정
+    storage: 500Mi
+  accessModes: # 접근 모드 
+    - ReadWriteMany # nfs 는 ReadWriteMany 로 여러 Pod 에서 접근이 가능 
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    path: /tmp/nfs
+    server: <NFS 서버 IP>
+```
+<br/>
+
+### EBS PV 예제 
+```yaml filename="ebs-pv.yaml" {3} copy
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: k8shelloboot-pv-ebs
+spec:
+  capacity:
+    storage: 1Gi # 데이터 저장소 크기 
+  accessModes: # 접근모드
+    - ReadWriteOnce
+  awsElasticBlockStore: # AWS EBS 정보 입력
+    volumeID: <Volume ID>
+    fsType: ext4
+```
+<br/>
+
+
+

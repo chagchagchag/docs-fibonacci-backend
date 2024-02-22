@@ -1,5 +1,9 @@
 {
     "intro": "소개",
     "kubernetes-scaling": "쿠버네티스의 스케일링",
-    "kubernetes-resource-assignment": "쿠버네티스의 자원 할당"
+    "kubernetes-resource-assignment": "쿠버네티스의 자원 할당",
+    "hostPath-emptyDir": "hostPath, emptyDir",
+    "PV-PVC": "PV, PVC",
+    "storage-class": "스토리지 클래스",
+    "window-directory-k8s-mount": "kubernetes hostPath 지정시 윈도우 WSL 디렉터리 경로"
 }

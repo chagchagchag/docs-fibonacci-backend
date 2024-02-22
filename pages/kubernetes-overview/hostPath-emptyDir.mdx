@@ -1,0 +1,193 @@
+
+# hostPath, emptyDir
+hostPath는 노드(호스트)의 디렉터리를 파드에 마운트하는 방식이고, emptyDir 은 노드(호스트)의 디스크를 컨테이너의 볼륨으로 마운트하는 방식이다.<br/>
+hostPath 는 파드가 재시작되더라도 노드(호스트)에 데이터가 남아있다. 다만 파드가 다른 노드에서 재시작 되면 이전에 사용했던 데이터를 이용하는 것은 불가능하다.<br/>
+emptyDir 은 파드가 살아있는 동안 컨테이너가 장애 등으로 인해 재기동되더라도 컨테이너는 파드가 마운트하고 있는 emptyDir 을 그대로 이어서 사용 가능하다. 다만 파드가 소멸되면 emptyDir 볼륨 내의 데이터도 소멸된다.<br/>
+<br/>
+
+emptyDir 은 Pod 레벨의 생명주기를 가진 임시저장소다. hostPath 는 호스트(노드) 레벨에서의 볼륨이다. 
+hostPath는 노드 레벨, emptyDir 은 파드 레벨에서의 지역적인 볼륨의 개념이라고 생각한다면 이해가 쉽다.<br/> 
+즉 hostPath, emptyDir 은 하나의 노드 또는 하나의 파드 내에서만의 볼륨을 사용하는 개념이다.<br/>
+
+뒤에서 따로 정리할 PV/PVC 문서에서는 여러 노드가 공유할 수 있는 볼륨을 쿠버네티스의 PV 리소스로 선언하고 PVC를 통해 접근하는 예제와 개념들을 살펴본다.<br/>
+hostPath, emptyDir 모두 PV 로 선언할 수 있기는 하다.<br/>
+하지만, NFS, AWSElasticBlockStore 기반의 볼륨으로 사용하는 것이 더 권장되는 방식이다.<br/>
+<br/>
+
+## 예제
+- [Dockerhub - chagchagchag/k8shelloboot](https://hub.docker.com/repository/docker/chagchagchag/k8shelloboot/general)
+- [github/chagchagchag/eks-k8s-docker-study-archive/application-examples/k8shello](https://github.com/chagchagchag/eks-k8s-docker-study-archive/tree/main/application-examples/k8shello)
+  - [k8s/k8shelloboot-hostpath.yml](https://github.com/chagchagchag/eks-k8s-docker-study-archive/blob/main/application-examples/k8shello/k8s/k8shelloboot-hostpath.yml)
+  - [k8s/k8shelloboot-emptydir.yml](https://github.com/chagchagchag/eks-k8s-docker-study-archive/blob/main/application-examples/k8shello/k8s/k8shelloboot-emptydir.yml)
+<br/>
+
+## hostPath
+- hostPath 는 노드(호스트 머신)의 디렉터리를 파드에 마운트하는 방식이다. 위에서 살펴본 emptyDir 은 호스트의 디스크를 **컨테이너**의 볼륨으로 마운트하지만, hostPath 는 호스트의 디스크를 **파드**에 마운트한다는 사실에 유의하자.
+- “파드가 Host 의 Path 를 마운트한다.” 라고 생각한다면 이해가 쉽다.
+- hostPath 로 볼륨을 마운트하면 파드가 재시작 되더라도 호스트에 데이터가 남아있다. 다만 파드가 새로운 호스트(노드)에서 재시작될 경우는 새로운 호스트(노드)의 디렉터리를 사용하므로, 이전 노드에서 사용하던 데이터는 접근불가능하다.
+- hostPath 는 흔히 Host Volume 이라고 부르기도 한다. 도커의 -v 옵션과 유사하게 host 서버의 볼륨 공간에 Pod가 데이터를 저장하는 것을 의미한다.
+<br/>
+
+```yaml filename="k8shelloboot-hostpath.yml" {3} copy
+apiVersion: v1
+kind: Pod
+metadata:
+  name: k8shelloboot-app-hostpath
+spec:
+  containers:
+  - name: k8shelloboot-app-hostpath
+    image: chagchagchag/k8shelloboot:0.0.1
+
+    # 컨테이너 내부의 연결 위치 지정
+    volumeMounts:
+    - mountPath: /app/volume
+      name: v-volume
+
+  # host 서버의 연결 위치 지정
+  volumes:
+  - name: v-volume
+    hostPath:
+      path: /run/desktop/mnt/host/v/000.env/volume
+      # type: DirectoryOrCreate
+```
+<br/>
+
+volumeMounts : 컨테이너 내부에서 사용될 볼륨을 선언
+
+- mountPath: 컨테이너 내부에 볼륨이 연결될 위치를 지정. 컨테이너 내부의 운영체제 내의 `/app/volume` 디렉터리에 볼륨이 마운트된다.
+- name: volumeMounts와 volume 을 연결하는 식별자로 사용된다. 위의 예제에서는 `v-volume` 이다.
+
+volumes : Pod 에서 사용할 volume 을 지정
+
+- name: volumeMounts 와 volume 을 연결하는 식별자로 사용. 위의 예제에서는 `v-volume` 이다.
+- hostPath : 호스트 서버 내에 연결 위치를 지정. 위의 예제에서는 `/run/desktop/mnt/host/v/000.env/volume` 이다.
+<br/>
+
+### 실행 & 확인
+```bash filename="bash" {3} copy
+$ kubectl apply -f k8shelloboot-hostpath.yml
+pod/k8shelloboot-app-hostpath created
+
+$ kubectl exec -it k8shelloboot-app-hostpath -- bash
+bash-4.2#
+bash-4.2# curl http://localhost:8080/healthcheck
+OK
+# 정상적으로 출력됨을 확인 가능
+
+bash-4.2# cat /app/volume/cache-log.log
+2024-01-30T11:27:27.320095147>>> write OK
+
+bash-4.2# exit
+exit
+
+## 삭제
+$ kubectl delete -f k8shelloboot-hostpath.yml
+pod "k8shelloboot-app-hostpath" deleted
+
+## 재생성
+$ kubectl apply -f k8shelloboot-hostpath.yml
+pod/k8shelloboot-app-hostpath created
+
+## bash 접속
+$ kubectl exec -it k8shelloboot-app-hostpath -- bash
+bash-4.2#
+
+## API 호출
+bash-4.2# curl http://localhost:8080/healthcheck
+OK
+
+bash-4.2# cat /app/volume/cache-log.log
+2024-01-30T11:27:27.320095147>>> write OK
+2024-01-30T11:27:34.827718406>>> write OK
+bash-4.2#
+```
+<br/>
+
+## emptyDir
+- emptyDir 은 노드(호스트 머신)의 디스크를 컨테이너의 볼륨으로 마운트해서 사용하는 방식이다.
+- 파드가 소멸될 때 emptyDir 에 할당했던 볼륨 내의 데이터도 소멸된다.
+- 파드가 살아있는 동안은 컨테이너가 장애 등으로 인해 재기동 되더라도 컨테이너는 파드가 마운트하고 있는 emptyDir 을 그대로 사용 가능하다. 다만, 위에서도 이야기했듯 파드가 소멸되면 emptyDir 볼륨 내의 데이터도 소멸된다.
+- 리소스 정의 파일 작성 시 볼륨을 선언하는 구문과 컨테이너에서 볼륨을 마운트하는 구문을 따로 정의한다는 사실을 기억해야 한다.
+- 위에서 정리한 `hostPath` 는 노드(호스트) 레벨이라면, `emptyDir`은 파드레벨이라는 점을 떠올리면 이해가 쉽다.
+<br/>
+
+### 예제
+```yaml filename="k8shelloboot-emptyDir.yml" {3} copy
+apiVersion: v1
+kind: Pod
+metadata:
+  name: k8shelloboot-app-emptydir
+spec:
+  containers:
+  - name: k8shelloboot-app-emptydir
+    image: chagchagchag/k8shelloboot:0.0.1
+
+    # 컨테이너 내부의 연결 위치 지정
+    volumeMounts:
+    - mountPath: /app/volume
+      name: v-volume
+
+  # host 서버의 연결 위치 지정
+  volumes:
+  - name: v-volume
+    emptyDir: {}
+```
+<br/>
+
+### 실행 & 확인 
+```bash filename="bash" {3} copy
+$ kubectl apply -f k8shelloboot-emptyDir.yml
+pod/k8shelloboot-app-emptydir created
+
+$ kubectl get all
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/k8shelloboot-app-emptydir   1/1     Running   0          11s
+
+NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+service/kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   13h
+
+$ kubectl exec -it k8shelloboot-app-emptydir -- bash
+
+bash-4.2# curl http://localhost:8080/healthcheck
+OK
+
+bash-4.2# cat /app/volume/cache-log.log
+2024-01-31T00:53:34.497769035>>> write OK
+
+
+bash-4.2# curl http://localhost:8080/healthcheck
+OK
+
+bash-4.2# cat /app/volume/cache-log.log
+2024-01-31T00:53:34.497769035>>> write OK
+2024-01-31T00:54:05.518777545>>> write OK
+
+bash-4.2# exit
+exit
+
+$ kubectl delete -f k8shelloboot-emptyDir.yml
+pod "k8shelloboot-app-emptydir" deleted
+
+$ kubectl apply -f k8shelloboot-emptyDir.yml
+pod/k8shelloboot-app-emptydir created
+
+$ kubectl exec -it k8shelloboot-app-emptydir -- bash
+bash-4.2#
+
+
+bash-4.2# cat /app/volume/cache-log.log
+cat: /app/volume/cache-log.log: No such file or directory
+
+
+bash-4.2# curl http://localhost:8080/healthcheck
+OK
+
+bash-4.2# cat /app/volume/cache-log.log
+2024-01-31T00:56:46.765727615>>> write OK
+
+
+bash-4.2# exit
+exit
+```
+<br/>
+

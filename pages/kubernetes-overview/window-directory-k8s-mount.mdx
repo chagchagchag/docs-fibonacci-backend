@@ -1,0 +1,28 @@
+# kubernetes hostPath 지정시 윈도우 WSL 디렉터리 경로
+
+## 참고자료
+- [Kubernetes on docker for windows, persistent volume with hostPath gives Operation not permitted](https://stackoverflow.com/questions/71018631/kubernetes-on-docker-for-windows-persistent-volume-with-hostpath-gives-operatio)
+- [WSL2 Kubernetes 환경에서 Windows 경로 Mount 하기](https://vine-nam.github.io/2022-10/mount-Windows-path-in-WSL2-Kubernetes-environment)
+- [Kubernetes how to correctly mount windows path in wsl2 backed environment](https://stackoverflow.com/questions/66985465/kubernetes-how-to-correctly-mount-windows-path-in-wsl2-backed-environment/67053315#67053315)
+- [Windows 10 20H2 Docker Desktop WSL2 enable 환경에서 Kubernetes volume hostPath 연결 오류 해결](https://arclab.tistory.com/337)
+- [Kubernetes on docker for windows, persistent volume with hostPath gives Operation not permitted](https://stackoverflow.com/questions/71018631/kubernetes-on-docker-for-windows-persistent-volume-with-hostpath-gives-operatio)
+- [wsl2 kubernetes volume hostpath 못잡는 문제 해결방법](https://www.leafcats.com/330)
+- [https://www.inflearn.com/questions/98495/access-i-s-denied-문제](https://www.inflearn.com/questions/98495/access-i-s-denied-%EB%AC%B8%EC%A0%9C)
+- [Error response from daemon: mkdir C:\Program Files\Git\opt: Access is denied](https://stackoverflow.com/questions/73315685/error-response-from-daemon-mkdir-c-program-files-git-opt-access-is-denied)
+- [path for PersistentVolume in Kubernetes .yaml in Windows](https://stackoverflow.com/questions/60782460/path-for-persistentvolume-in-kubernetes-yaml-in-windows)
+<br/>
+
+## 윈도우OS 에서 hostPath 경로
+
+쿠버네티스 역시 결국은 Docker 엔진으로 동작하는데, 윈도우 기반의 Docker 엔진에서 WSL 의 어느 디렉터리를 참조하는지가 꽤 까다롭습니다.<br/>
+디렉터리를 참조하는 경로는 아래와 같이 구성됩니다.<br/>
+
+```bash filename="bash" {3} copy
+/run/desktop/mnt/host/c/PATH/TO/FILE
+```
+<br/>
+
+예를 들어 HOST PC 의 /v/000.env/volume 을 파드 내에서 마운트할 때 `hostPath` 의 `path` 는 아래와 같이 지정해줍니다.
+```bash filename="bash" {3} copy
+/run/desktop/mnt/host/v/000.env/volume
+```

@@ -1,0 +1,169 @@
+## StorageClass 
+
+## local-path
+kind 에는 `local-path` 타입의 StorageClass 가 설치되어 있습니다. kind 클러스터의 버전에 따라 다르겠지만, 이번 예제에서 사용한 kind 클러스터에서 나타난 `local-path` 타입의 StorageClass 의 이름은 `standard` 라는 이름으로 설치되어 있습니다.<br/>
+StorageClass 를 조회하는 명령은 `kubectl get sc` 입니다.
+```bash filename="bash" {3} copy
+$ kubectl get sc
+NAME                 PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+standard (default)   rancher.io/local-path   Delete          WaitForFirstConsumer   false                  11m
+```
+<br/>
+
+위의 결과를 보면 Kind 클러스터 내에 `local-path` 타입으로 디폴트로 설치된 StorageClass 의 이름은 "standard" 입니다.<br/>
+아래에서 정의할 PVC 정의 yaml 에서 `spec.storageClassName` 은 반드시 위에서 조회해서 알게된 `standard` 로 지정해주면 됩니다.<br/>
+<br/>
+
+어떻게 정의되어 있는지 확인해보면 아래와 같습니다.
+```bash filename="bash" {3} copy
+$ kubectl get sc standard -oyaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"storage.k8s.io/v1","kind":"StorageClass","metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"},"name":"standard"},"provisioner":"rancher.io/local-path","reclaimPolicy":"Delete","volumeBindingMode":"WaitForFirstConsumer"}
+    storageclass.kubernetes.io/is-default-class: "true"
+  creationTimestamp: "2024-02-01T07:44:21Z"
+  name: standard
+  resourceVersion: "286"
+  uid: 5b06a540-194d-4f69-b93b-6435b761812b
+provisioner: rancher.io/local-path
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+```
+<br/>
+
+이번에는 `local-path` 타입의 pvc 를 한번 만들어보겠습니다.
+```yaml filename="k8shelloboot-pvc-local-path.yaml" {3} copy
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: k8shelloboot-pvc-local-path
+spec:
+  storageClassName: standard # kubectl get sc 명령을 통해 나타나는 storeclass 중 하나를 선택했다.
+  # storageClassName: local-path
+  # storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+
+```
+<br/>
+
+`spec.storageClassName`
+- kubectl get sc 명령을 통해 나타나는 StorageClass 목록에서 원하는 StorageClass 를 선택합니다.
+- 이번 문서의 제일 처음에 kind 클러스터에서 StorageClass 중 설치된 것이 있는지 조회해봤고 `standard` 가 default 였기에 `storageClassName` 을 `standard` 로 지정해줬습니다.
+
+<br/>
+
+kubectl apply 를 통해 적용해봅니다.
+```bash filename="bash" {3} copy
+$ kubectl apply -f k8shelloboot-pvc-local-path.yml
+persistentvolumeclaim/k8shelloboot-pvc-local-path created
+```
+<br/>
+
+만들어진 pvc 를 확인해보겠습니다.
+```bash filename="bash" {3} copy
+$ kubectl get pvc
+NAME                          STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+k8shelloboot-pvc-local-path   Pending                                      local-path     10s
+```
+<br/>
+
+현재 Pending 상태입니다. Pod가 PVC를 사용할 때 동적으로 볼륨이 생성됩니다.<br/>
+<br/>
+
+deployment 를 기동해보기 위해 아래의 deployment 정의서를 작성합니다.
+```yaml filename="k8shelloboot-deploy" {3} copy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8shelloboot-app-deploy
+spec:
+  selector:
+    matchLabels:
+      app: k8shelloboot-app
+  template:
+    metadata:
+      labels:
+        app: k8shelloboot-app
+    spec:
+      volumes:
+        # 1)
+        - name: log-volume
+          persistentVolumeClaim:
+            claimName: k8shelloboot-pvc-local-path
+      containers:
+      - name: k8shelloboot
+        image: chagchagchag/k8shelloboot:0.0.1
+        imagePullPolicy: Always
+        volumeMounts:
+          - mountPath: /app/volume
+            name: log-volume
+        ports:
+        - containerPort: 8080
+```
+<br/>
+
+1\)
+ - spec.volumes 내에 volume 을 하나 추가해줬습니다.
+ - volume 의 이름(name)은 `log-volume` 이라고 정의해줬고, `persistentVolumeClame.clameName` 을 지정해서 사용하려는 PersistentVolumeClaim 의 이름을 명시했습니다.<br/>
+<br/>
+
+작성한 리소스 정의서를 kubectl 을 통해 kubernetes 클러스터에 적용합니다.
+```bash filename="bash" {3} copy
+$ kubectl apply -f k8shelloboot-deploy.yml
+deployment.apps/k8shelloboot-app-deploy created
+```
+<br/>
+
+deployment 가 제대로 구동되었는지 확인해보겠습니다.
+```bash filename="bash" {3} copy
+$ kubectl get all
+NAME                                           READY   STATUS    RESTARTS   AGE
+pod/k8shelloboot-app-deploy-7f67896bf7-wqxs9   1/1     Running   0          7s
+
+NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+service/kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   54m
+
+NAME                                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/k8shelloboot-app-deploy   1/1     1            1           7s
+
+NAME                                                 DESIRED   CURRENT   READY   AGE
+replicaset.apps/k8shelloboot-app-deploy-7f67896bf7   1         1         1       7s
+```
+<br/>
+
+일단 pod 의 상태를 보면 정상적으로 `Running` 상태에 진입했다는 사실을 확인했습니다.<br/>
+<br/>
+
+이번에는 pod 내부로 접속해서 API가 잘 동작하는지 로그가 잘 찍혔는지 확인해봅니다. Service와 Ingress 를 모두 만들어서 호스트 PC에서 확인해보면 멋있어보이겠지만, 개념설명의 호흡이 길어져서 요지를 알 수 없을 수 있기에 pod에 접속해서 직접 로그를 확인하는 방식으로 동작을 확인해봅니다.
+```bash filename="bash" {3} copy
+## pod 접속
+$ kubectl exec -it k8shelloboot-app-deploy-7f67896bf7-wqxs9 -- bash
+bash-4.2#
+...
+
+## API 호출 시 정상응답하는지 확인
+bash-4.2# curl http://localhost:8080/healthcheck
+OK
+...
+
+## 로그파일 내용 확인
+bash-4.2# cat /app/volume/cache-log.log
+2024-02-01T08:47:51.183360936>>> write OK
+...
+
+## API 호출 시 정상응답하는지 확인
+bash-4.2# curl http://localhost:8080/healthcheck
+OK
+
+## 로그파일 내용 확인 (로그파일에 모두 잘 기록되었다.)
+bash-4.2# cat /app/volume/cache-log.log
+2024-02-01T08:47:51.183360936>>> write OK
+2024-02-01T08:48:19.245463098>>> write OK
+```
