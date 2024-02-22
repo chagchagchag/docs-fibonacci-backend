@@ -144,6 +144,42 @@ done
 
 `localhost:8080/fibonacci` API 수행시 500ms 만큼 지연이 계속해서 발생하는 상황을 가정한 delay 코드를 추가합니다.<br/>
 
+추가한 코드 옆 또는 코드 위에 주석을 추가해두었습니다.
+
+```java
+@Service
+public class FibonacciService {
+    
+    // ... 
+    
+    public BigDecimal getFibonacci(int number) {
+        delayMs(500); // 여기에 추가
+        if(number == 0) return BigDecimal.ZERO;
+        else if(number == 1) return BigDecimal.ONE;
+        else if(number == 2) return BigDecimal.ONE;
+        else{
+            if(dp.containsKey(number)) return dp.get(number);
+
+            dp.put(number, getFibonacci(number-2).add(getFibonacci(number-1)));
+
+            return dp.get(number);
+        }
+    }
+
+    // 여기이 코드를 보시면 됩니다. 
+    public void delayMs(long ms){
+        long spentTime = 0L;
+        long started = System.currentTimeMillis();
+        do {
+            spentTime = System.currentTimeMillis() - started;
+        } while(spentTime < ms);
+    }
+    
+    // ...
+    
+}
+```
+
 <br/>
 
 
@@ -151,6 +187,31 @@ done
 ## spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
 
 스프링 컨테이너의 커넥션을 처리하는 스레드가 부족해지는 상황을 가정하기 위해 스프링 부트 톰캣 스레드 풀의 사이즈를 10으로 수정합니다. 스프링 부트 톰캣 스레드 풀의 기본사이즈는 200 입니다.<br/>
+
+`fibonacci-backend-web/src/resources/application.yml`
+
+- `server.tomcat.threads.max` 를 10 으로 설정해주었습니다.
+
+```yaml filename="fibonacci-backend-web/src/resources/application.yml" {0} copy
+server:
+  shutdown: graceful
+  tomcat:			## 여기에 추가해주었습니다.
+    threads:		## 여기에 추가해주었습니다.
+      max: 10		## 여기에 추가해주었습니다.
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 50s
+  data:
+    redis:
+      host: redis-server.default.svc.cluster.local
+      port: 6379
+
+#logging:
+#  file:
+#    name: /var/log/app/fibonacci.log
+```
+
 <br/>
 
 
