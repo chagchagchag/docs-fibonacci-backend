@@ -115,11 +115,6 @@ fibonacci-cluster-worker          29m          0%     283Mi           1%
 ```
 <br/>
 
-### `fibonacci-backend-web` 에 지연이 발생하는 코드를 추가
-500ms 만큼 지연이 계속해서 발생하는 상황을 가정한 delay 코드를 추가합니다.<br/>
-
-<br/>
-
 
 
 ### curl 요청 쉘스크립트 추가
@@ -147,9 +142,11 @@ done
 
 ## spring boot  애플리케이션에 지연코드 추가
 
-
+`localhost:8080/fibonacci` API 수행시 500ms 만큼 지연이 계속해서 발생하는 상황을 가정한 delay 코드를 추가합니다.<br/>
 
 <br/>
+
+
 
 ## spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
 
