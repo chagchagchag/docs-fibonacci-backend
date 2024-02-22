@@ -1,28 +1,55 @@
 ## HPA 정의 및 테스트
-> 귀찮고 손이 많이 가는 문서작업이어서 건너뛰려 했는데 결국은 했어야 할 문서작업이었군!!! 하는 생각이 들어서 정리를 시작!! 합니다.<br/>
-> Probe 개념정리와 함께 제일 정리하기 귀찮다고 생각했던 개념을 오늘에서야!!! 정리를 시작하네요.<br/>
-<br/>
-
-## 시나리오
+## 테스트 시나리오
 HPA 가 잘 적용되는지 테스트를 해보는 테스트 시나리오는 아래와 같습니다. 꼭 HPA 의 동작을 확인한 후에는 다시 정상으로 돌려두어야 합니다.<br/>
 
 로드 유발 쉘스크립트 작성
-- `fibonacci-backend-web` 내에서 fibonacci 계산을 수행하는 함수에 500ms 의 delay 를 부여합니다. 이렇게 해서 1초에 약 2번 정도 연산을 수행할 수 있는 상황을 가정합니다.
 - 테스트를 위해 `generate-load-request.sh` 에서는 1초에 50개의 request 를 보내는데 [http://localhost:8080/number=1](http://localhost:8080/number=1) 을 단순 GET 요청으로 보냅니다. 
-  - 듣기에는 어려운 방식처럼 보이지만, for 문 내에 1초의 delay 를 걸고 delay 이전 구문에서 50번의 curl 요청을 for loop 으로 수행하는 방식을 무한 루프로 돌리는 간단한 방식입니다. 이 글의 하단에서 정리를 합니다.
+  <br/>
+
+
+
+쿠버네티스 애플리케이션에 지연코드 추가
+
+- 테스트를 위해 지연이 발생하는 코드를 쿠버네티스 애플리케이션에 추가합니다.
+- `fibonacci-backend-web` 내에서 fibonacci 계산을 수행하는 함수에 500ms 의 delay 를 부여합니다. 이렇게 해서 1초에 약 2번 정도 연산을 수행할 수 있는 상황을 가정합니다.
+
 <br/>
+
+
+
+spring boot 애플리케이션에 지연 코드 추가
+
+- 테스트를 위해 애플리케이션의 `localhost:8080/number=1` 이 1초에 2번의 요청만 수행가능한 환경을 가정합니다.
+
+<br/>
+
+
+
+spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
+
+- 스레드 풀을 10개만 있는 상황을 가정합니다.
+- 이렇게 하면 하나의 파드는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 스레드에서 운영하게 되므로 1초에 10개의 스레드를 이용해 20번의 요청을 처리할 수 있습니다. 이런 상황을 가정해서 테스트를 수행하겠습니다.
+
+<br/>
+
+
 
 테스트를 위한 파드의 성능 축소, Probe 재시동 판단 조건 완화
 - CPU, Memory 를 조금은 작은 용량으로 준비해둡니다. 스케일링이 잘 되는지 확인해보기 위해서입니다.
 - 오토스케일링 테스트를 위해 readinessProbe, livenessProbe 를 통해 파드의 재시동 주기를 조절합니다. 가급적 재시동이 자주 걸리지 않도록 변경해줍니다.
 - readiness 프로브에서는 successThreshold를 작게주어서 재기동 중에 다시 재기동이 이뤄지지 않도록 하고, failureThreshold 는 더 크게 주어서 관대하게 설정을 합니다. 
 - liveness 프로브에는 failureThreshold 를 조정해서 live 판정이 조금 더 자주 일어나지 않도록 조정합니다.
+
 <br/>
+
+
 
 HPA 적용 및 테스트
 - 재기동이 민감하지 않은 것을 확인했으면 이제는 HPA 설정을 시작합니다. minReplicas=2, maxReplicas=5 로 주어서 2~5 사이에서 스케일링이 이뤄지게끔 합니다. averageUtilization 은 50 으로 주어서 1000m * 50% 인 500m 일때 스케일링이 일어나도록 설정해줍니다. 그리고 stabilizationWindowSeconds 를 지정해서 스케일링 주기를 결정합니다.
 - 스케일링이 이뤄지는지 `generate-load-request.sh` 를 통해 확인해봅니다.
 <br/>
+
+
 
 ## 로드 유발 쉘스크립트 작성
 ### metrics-server 설치
@@ -53,10 +80,11 @@ error: Metrics API not available
 
 이 경우 아래와 같이 metrics-server 라는 이름의 deployment 를 수정하는 명령어를 실행해줍니다.
 ```bash filename="bash" {0} copy
+kubectl edit deployments -n kube-system metrics-server
 ```
 <br/>
 
-그리고 나타나는 시스템 에디터에서는 insecure 옵션을 추가해준 후 저장합니다.
+그리고 나타나는 시스템 에디터에서는 `--kubelet-insecure-tls` 옵션을 추가해준 후 저장합니다.
 ![](./img/BACKEND-WEB-HPA/1.png)
 <br/>
 
@@ -92,9 +120,43 @@ fibonacci-cluster-worker          29m          0%     283Mi           1%
 
 <br/>
 
-### spring boot 톰캣 스레드 풀 사이즈 수정
+
+
+### curl 요청 쉘스크립트 추가
+
+단순한 코드입니다. 1초에 한번씩 50개의 curl 요청을 `GET http://localhost:8080/number=1` 으로 보내는 쉘스크립트입니다.
+
+```bash filename="load.sh" {0} copy 
+#!/bin/bash
+
+while true; do    
+  count=50
+
+  for ((i = 0; i < count; i++)); do
+    curl "http://localhost:8080/fibonacci?number=1" &
+  done
+ 
+  sleep 1  
+done
+
+```
+
+<br/>
+
+
+
+## spring boot  애플리케이션에 지연코드 추가
+
+
+
+<br/>
+
+## spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
+
 스프링 컨테이너의 커넥션을 처리하는 스레드가 부족해지는 상황을 가정하기 위해 스프링 부트 톰캣 스레드 풀의 사이즈를 10으로 수정합니다. 스프링 부트 톰캣 스레드 풀의 기본사이즈는 200 입니다.<br/>
 <br/>
+
+
 
 
 ## 테스트를 위한 파드의 성능 축소, Probe 재시동 판단 조건 완화
@@ -106,7 +168,7 @@ fibonacci-cluster-worker          29m          0%     283Mi           1%
 - cpu 
   - requests: "1000m"
   - limits: "1500m"
-<br/>
+  <br/>
 
 수정해준 부분은 아래에 `## *** 여기를 수정함` 이라는 주석으로 명시해두었습니다.<br/>
 
@@ -176,11 +238,10 @@ spec:
 
 ### Probe 재시동 판단 조건 완화
 성능을 축소했기에 파드가 재시동될 가능성이 높습니다. 재시동으로 인한 CPU 점유율이 올라갈 때 축소한 성능을 넘어서는 경우가 있어서 재기동이 계속해서 생길 수 있는데 이 부분에 대해서 Probe 로 재시동 요건을 완화해줍니다.<br/>
-> 테스트가 끝난 후에는 원래의 Probe 설정으로 되돌려줘야 합니다.<br/>
+> 테스트가 끝난 후에는 반드시 원래의 Probe 설정으로 되돌려줘야 합니다.<br/>
 
 #### Readiness Probe 설정 완화
-- 
-<br/>
+- <br/>
 
 #### Liveness Probe 설정 완화
 
