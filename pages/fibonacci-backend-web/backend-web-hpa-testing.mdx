@@ -448,15 +448,128 @@ spec:
 
 ## HPA 적용 및 테스트
 
+### kubectl -n fibonacci get pods 를 1초 단위로 모니터링
 
+터미널에 아래의 명령어를 수행해서 1초에 한번씩 pod 의 상태를 모니터링합니다.
+
+```bash
+watch -n 1 kubectl -n fibonacci get pods
+```
+
+이렇게 하면 watch -n 1 명령은 1초에 한번씩(-n 1) watch 를 하겠다는 의미이고, kubectl get pod 를 1초에 한번씩 수행해서 터미널에 출력하게 됩니다.
 
 <br/>
 
 
 
+### kubectl -n fibonacci get top pods 를 1초 단위로 모니터링
+
+터미널에 아래의 명령어를 수행해서 1초에 한번씩 pod의 CPU, MEMORY 현황을 모니터링합니다.
+
+```bash
+watch -n 1 kubectl -n fibonacci top pods
+```
+
+이렇게 하면 watch -n 1 명령은 1초에 한번씩(-n 1) watch 를 하겠다는 의미이고, kubectl top pods 를 1초에 한번씩 수행해서 터미널에 출력하게 됩니다.
+
+<br/>
 
 
 
+### `generate-load-request.sh` 실행
+
+이 문서의 초입에서 작성했던 `generate-load-request.sh`을 실행합니다.
+
+```bash
+source generate-load-request.sh
+```
+
+
+
+### HPA 적용 전후 테스트
+
+#### HPA 적용 전
+
+- 스크린샷 추가 예정 (순간포착이 쉽지 않아서 따로 캡처작업을 수행 예정)
+
+<br/>
+
+
+
+#### HPA 적용 
+
+pod 를 2 \~ 5 개로 성능 지표에 따라서 스케일업이 발생하도록 리소스를 정의한 코드는 아래와 같습니다.
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fibonacci-backend-hpa
+  namespace: fibonacci
+spec:
+  minReplicas: 2
+  maxReplicas: 5
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fibonacci-backend-web
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 30
+```
+
+<br/>
+
+
+
+spec.minReplicas, spec.maxReplicas
+
+- min : 2, max: 5 로 해서 최소 2기의 파드로 운영되고 부하가 심할 때는 최대 5기의 파드로 운영되게끔 지정해줬습니다.
+
+```yaml
+spec:
+  minReplicas: 2
+  maxReplicas: 5
+  # ...
+```
+
+<br/>
+
+
+
+spec.metrics ... 
+
+- Resource 타입의 메트릭을 지정해줬고, cpu 자원에 대해 `Utilization` 을 적용해주었고 averageUtilization 을 50 으로 지정해줬습니다.
+- averageUtilization 에 대해서는 [쿠버네티스의 스케일링](https://chagchagchag.github.io/docs-fibonacci-backend/kubernetes-overview/kubernetes-scaling/) 문서에 설명을 정리해두었습니다.
+
+```yaml
+spec:
+  # ... 
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+```
+
+<br/>
+
+
+
+#### HPA 적용 후
+
+- 스크린샷 추가 예정 (순간포착이 쉽지 않아서 따로 캡처작업을 수행 예정)
 
 
 
