@@ -1,4 +1,9 @@
 ## HPA 정의 및 테스트
+
+개인적으로 이런 매니페스트 파일 기반 리소스 테스트는 kustomize 를 이용하면 조금 더 편할 것 같습니다. 이번 실습에서는 kustomize 를 적용하면 다소 이해가 쉽지 않을 수 있어서 kustomize 를 예제에 적용하지는 않았습니다.<br/>
+
+
+
 ## 테스트 시나리오
 HPA 가 잘 적용되는지 테스트를 해보는 테스트 시나리오는 아래와 같습니다. 꼭 HPA 의 동작을 확인한 후에는 다시 정상으로 돌려두어야 합니다.<br/>
 
@@ -62,6 +67,8 @@ error: Metrics API not available
 ```
 <br/>
 
+
+
 `metrics-server` 가 설치되어 있지 않습니다. [`metrics-server`](https://github.com/kubernetes-sigs/metrics-server) 에 방문해서 `metrics-server`를 설치합니다.<br/>
 
 [metrics-server#installation](https://github.com/kubernetes-sigs/metrics-server?tab=readme-ov-file#installation)에서는 metrics-server 를 설치하는 명령어를 알려주고 있습니다. 이 명령어를 복사해서 쿠버네티스 클러스터에 적용해줍니다.<br/>
@@ -71,6 +78,8 @@ kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/late
 ```
 <br/>
 
+
+
 이렇게 설치를 해도 아래와 같이 `kubectl top nodes` 로 현황을 확인해도 에러 메시지가 나타나는 경우가 있습니다.
 ```bash filename="bash" {0} copy
 $ kubectl top nodes
@@ -78,15 +87,22 @@ error: Metrics API not available
 ```
 <br/>
 
+
+
 이 경우 아래와 같이 metrics-server 라는 이름의 deployment 를 수정하는 명령어를 실행해줍니다.
+
 ```bash filename="bash" {0} copy
 kubectl edit deployments -n kube-system metrics-server
 ```
 <br/>
 
+
+
 그리고 나타나는 시스템 에디터에서는 `--kubelet-insecure-tls` 옵션을 추가해준 후 저장합니다.
 ![](./img/BACKEND-WEB-HPA/1.png)
 <br/>
+
+
 
 설치가 잘 되었는지 확인해봅니다. 결과를 보니 잘 설치되었습니다. (제일 아래줄에 `metrics-server-796fbd6c9d-29hdz` 을 확인 가능)
 ```bash filename="bash" {0} copy
@@ -142,6 +158,8 @@ done
 
 ## spring boot  애플리케이션에 지연코드 추가
 
+> 이번 테스트 실습이 끝난 후에는 반드시 지연코드를 지우고 원래의 코드로 되돌려놓아야 합니다.<br/>
+
 `localhost:8080/fibonacci` API 수행시 500ms 만큼 지연이 계속해서 발생하는 상황을 가정한 delay 코드를 추가합니다.<br/>
 
 추가한 코드 옆 또는 코드 위에 주석을 추가해두었습니다.
@@ -186,6 +204,8 @@ public class FibonacciService {
 
 ## spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
 
+> 이번 테스트 실습이 끝난 후에는 반드시 원래의 톰캣 스레드 풀 설정으로 되돌려줘야 합니다.<br/>
+
 스프링 컨테이너의 커넥션을 처리하는 스레드가 부족해지는 상황을 가정하기 위해 스프링 부트 톰캣 스레드 풀의 사이즈를 10으로 수정합니다. 스프링 부트 톰캣 스레드 풀의 기본사이즈는 200 입니다.<br/>
 
 `fibonacci-backend-web/src/resources/application.yml`
@@ -216,9 +236,12 @@ spring:
 
 
 
-
 ## 테스트를 위한 파드의 성능 축소, Probe 재시동 판단 조건 완화
+
 ### CPU, Memory 의 requests, limits 수정
+
+> 이번 테스트 실습이 끝난 후에는 반드시 원래의 CPU, Memory 설정으로 되돌려줘야 합니다.<br/>
+
 테스트를 위해 파드의 스펙을 축소해서 아래와 같이 수정해줍니다.
 - memory 
   - requests : "512Mi"
@@ -230,7 +253,10 @@ spring:
 
 수정해준 부분은 아래에 `## *** 여기를 수정함` 이라는 주석으로 명시해두었습니다.<br/>
 
-**hpa 코드**
+
+
+**hpa 코드 (k8s/plain-deploy/fibonacci-backend-web-deploy.yml)**
+
 ```yaml filename="fibonacci-backend-deploy.yaml" {0} copy
 apiVersion: apps/v1
 kind: Deployment
@@ -257,6 +283,7 @@ spec:
         - name: fibonacci
           image: chagchagchag/fibonacci-backend-web:0.0.1
           imagePullPolicy: Always
+          ## 여기서부터 시작
           resources:
             requests:
               memory: "512Mi" ## *** 여기를 수정함
@@ -264,10 +291,133 @@ spec:
             limits:
               memory: "1Gi"   ## *** 여기를 수정함
               cpu: "1500m"    ## *** 여기를 수정함
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh","-c","sleep 10"]
+
+## ...
+
+```
+<br/>
+
+
+
+### Probe 재시동 판단 조건 완화
+
+> 테스트가 끝난 후에는 반드시 원래의 Probe 설정으로 되돌려줘야 합니다.<br/>
+
+성능을 축소했기에 파드가 재시동될 가능성이 높습니다. 재시동으로 인한 CPU 점유율이 올라갈 때 축소한 성능을 넘어서는 경우가 있어서 재기동이 계속해서 생길 수 있는데 이 부분에 대해서 Probe 로 재시동 요건을 완화해줍니다. 이렇게 성능을 축소한 후에 재기동 횟수를 최소화 하는 이유는 HPA 가 정상적으로 수행되는지를 확인하기 위해서입니다. <br/>
+
+
+
+#### Readiness Probe 설정 완화
+
+> 테스트가 끝난 후에는 반드시 원래의 Probe 설정으로 되돌려줘야 합니다.<br/>
+
+전체 코드는 [github.com/chagchagchag/fibonacci-backend/k8s/plain-deploy/fibonacci-backend-web/fibonacci-web-deploy.yml](https://github.com/chagchagchag/fibonacci-backend/blob/main/k8s/plain-deploy/fibonacci-backend-web/fibonacci-web-deploy.yml) 을 참고하시면 됩니다.
+
+- successThreshold = 2, failureThreshold = 3 으로 되어 있던 것을 successThreshold = 1, failureThreshold = 2 로 변경해줬습니다.
+- 원래 설정은 두번 성공해야 네트워크를 허용하고, 세번 실패해야 네트워크를 끊는 설정이었는데 이것을 변경해서 한번만 성공해도 네트워크에 접속이 가능하게 하고 두번 실패했을 때에 네트워크를 끊도록 하는 설정으로 변경해주었습니다.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-web-deploy
+  namespace: fibonacci
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fibonacci-backend-web
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-web
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-web:0.0.1
+          
+          ## ...
+          
+          readinessProbe:
+            httpGet:
+              path: /probe/ready
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 2
+          
+          ## ...
+```
+
+<br/>
+
+
+
+#### Liveness Probe 설정 완화
+
+> 테스트가 끝난 후에는 반드시 원래의 Probe 설정으로 되돌려줘야 합니다.<br/>
+
+
+
+전체 코드는 [github.com/chagchagchag/fibonacci-backend/k8s/plain-deploy/fibonacci-backend-web/fibonacci-web-deploy.yml](https://github.com/chagchagchag/fibonacci-backend/blob/main/k8s/plain-deploy/fibonacci-backend-web/fibonacci-web-deploy.yml) 을 참고하시면 됩니다.
+
+- failureThreshold 가 3이었던 것을 10으로 변경했습니다.
+- livenessProbe의 경우 컨테이너 자체를 restart 하는 것으로 인해 장기간 파드가 작업을 처리하지 못하도록 하는 문제가 있기 때문에 원래 3 이었던 `failureThreshold` 를 10 으로 늘려서 되도록이면 restart 필요 없이 readinessProbe 만으로 트래픽 양을 제어하면서 트래픽을 처리할 수 있도록 변경해줬다.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-web-deploy
+  namespace: fibonacci
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fibonacci-backend-web
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-web
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-web:0.0.1
+          
+          ## ...
+          
+          livenessProbe:
+            httpGet:
+              path: /probe/live
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            failureThreshold: 10 ### 이곳을 수정 
+```
+
+<br/>
+
+
+
+#### 낮춘 서버 사양에 맞도록 각 프로브의 `initialDelaySeconds` 수정
+- 서버사양을 낮춘 만큼 부팅이 늦어질 가능성이 높기 때문에 Redyness 프로브, Startup 프로브의 `initialDelaySeconds` 를 아래와 같이 45 로 수정해줍니다.
+<br/>
+
+```yaml
+## ...
           startupProbe:
             httpGet:
               path: /probe/startup
@@ -290,28 +440,23 @@ spec:
             initialDelaySeconds: 45
             periodSeconds: 1
             failureThreshold: 10
-
 ```
-<br/>
 
-### Probe 재시동 판단 조건 완화
-성능을 축소했기에 파드가 재시동될 가능성이 높습니다. 재시동으로 인한 CPU 점유율이 올라갈 때 축소한 성능을 넘어서는 경우가 있어서 재기동이 계속해서 생길 수 있는데 이 부분에 대해서 Probe 로 재시동 요건을 완화해줍니다.<br/>
-> 테스트가 끝난 후에는 반드시 원래의 Probe 설정으로 되돌려줘야 합니다.<br/>
-
-#### Readiness Probe 설정 완화
-- <br/>
-
-#### Liveness Probe 설정 완화
-
-<br/>
-
-#### 낮춘 서버 사양에 맞도록 각 프로브의 `initialDelaySeconds` 수정
-- 서버사양을 낮춘 만큼 부팅이 늦어질 가능성이 높기 때문에 Redyness 프로브, Startup 프로브의 `initialDelaySeconds` 를 아래와 같이 수정해줍니다.
 <br/>
 
 
 
 ## HPA 적용 및 테스트
+
+
+
+<br/>
+
+
+
+
+
+
 
 
 
