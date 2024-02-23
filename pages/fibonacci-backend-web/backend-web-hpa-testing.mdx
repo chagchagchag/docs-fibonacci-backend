@@ -54,6 +54,42 @@ HPA 적용 및 테스트
 - 스케일링이 이뤄지는지 `generate-load-request.sh` 를 통해 확인해봅니다.
 <br/>
 
+## 사전 준비
+### redis 설치
+```bash
+cd k8s/plain-deploy/fibonacci-common
+kubectl apply -f redis.yml
+```
+<br/>
+
+redis.yml 의 yaml 파일 내용은 아래와 같고 [github.com/chaghchagchag/fibonacci-bacend/redis.yml](https://github.com/chagchagchag/fibonacci-backend/blob/main/k8s/plain-deploy/fibonacci-common/redis.yml) 에서 확인 가능합니다.
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  containers:
+    - name: redis
+      image: redis
+      ports:
+        - containerPort: 6379
+```
+<br/>
 
 
 ## 로드 유발 쉘스크립트 작성
