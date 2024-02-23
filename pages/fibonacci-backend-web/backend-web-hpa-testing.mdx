@@ -55,6 +55,14 @@ HPA 적용 및 테스트
 <br/>
 
 ## 사전 준비
+### 클러스터 생성
+kind 클러스터가 로컬 개발환경에 설치되어 있지 않은 상태인 경우 아래와 같이 kind 클러스터를 설치해줍니다.
+```bash
+cd cluster
+source create-cluster.sh
+```
+<br/>
+
 ### redis 설치
 ```bash
 cd k8s/plain-deploy/fibonacci-common
