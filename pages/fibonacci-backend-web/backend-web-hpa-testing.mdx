@@ -4,11 +4,35 @@ kustomize 를 적용해서 hpa 적용버전, 일반 deployment 를 적용할수�
 
 
 
-잠시 수정 중입니다. 내용을 깔끔하게 가다듬는 데에 3시간 정도 소요될것 같습니다. <br/>
+## 테스트의 가정 범위
 
-내용이 계속해서 바뀌더라도 양해부탁드립니다.<br/>
+### HPA 를 적용하지 않은 일반 디플로이먼트
+
+파드 하나는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 커넥션 스레드 풀에서 운영합니다. 따라서 파드 하나는 1초에 20개의 요청을 처리할 수 있다고 추측하고 있습니다. 그리고 파드는 2개를 운영합니다. 따라서 1초에 40개의 요청까지는 정상적으로 처리가 가능하다는 것을 가정합니다.<br/>
+
+로드 유발 스크립트는 0.5초마다 200개의 요청을 합니다. 즉, 클라이언트 측에서는 API에 1초에 400개의 API 요청을 수행하는 것을 가정합니다.<br/>
+
+테스트 수행결과는 아래의 링크를 참고해주세요. 파드 2기가 결국은 RESTART를 하게 됩니다.
+
+- [HPA 를 적용하지 않은 단순 디플로이먼트의 동작](https://youtu.be/1EZ1YGYcqi4?si=om9Dk3aecIouUv4w)
 
 <br/>
+
+
+
+### HPA 적용 후 디플로이먼트 테스트
+
+파드 하나는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 커넥션 스레드 풀에서 운영합니다. 따라서 파드 하나는 1초에 20개의 요청을 처리할 수 있다고 추측하고 있습니다. 그리고 파드는 최소 3개에서 10개가 스케일링 되도록 HPA(HorizontalPodAutoscaler) 기반으로 운영합니다. 따라서 1초에 최소 60개의 요청이 처리 가능하고 최대 200개의 요청까지는 정상적으로 처리가 가능하다는 추론이 가능합니다. (`60 ~ 200`)<br/>
+
+로드 유발 스크립트는 0.5초마다 200개의 요청을 합니다. 즉, 클라이언트 측에서는 API에 1초에 400개의 API 요청을 수행하는 것을 가정합니다.<br/>
+
+테스트 수행결과는 아래의 링크를 참고해주세요. 실험 결과는 파드 10기까지 HPA 를 통해 스케일아웃이 발생하며, CPU 점유율이 모든 파드가 300m 까지 치솟았다가 평균적으로 모든 파드가 `100m` 수준을 유지하게 되는 것을 확인 가능합니다.
+
+- [HPA 가 적용된 디플로이먼트](https://youtu.be/vK_nj7bbdZw?si=mY3U9Tei_1pR5gKD)
+
+<br/>
+
+
 
 
 
@@ -514,17 +538,6 @@ spec:
 
 ```yaml
 # ...
-  template:
-    metadata:
-      labels:
-        app: fibonacci-backend-web
-    spec:
-      terminationGracePeriodSeconds: 60
-      containers:
-        - name: fibonacci
-          image: chagchagchag/fibonacci-backend-web:0.0.1
-          imagePullPolicy: Always
-          # ...
           startupProbe:
             httpGet:
               path: /probe/startup
@@ -659,11 +672,9 @@ source generate-load-reaquest.sh
 
 ### 로드 처리 결과
 
-로드를 처리한 결과는 아래의 영상을 참고해주세요. HPA 를 적용하지 않으면 1
+파드 하나는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 커넥션 스레드 풀에서 운영합니다. 따라서 파드 하나는 1초에 20개의 요청을 처리할 수 있다고 추측하고 있습니다. 그리고 파드는 2개를 운영합니다. 따라서 1초에 40개의 요청까지는 정상적으로 처리가 가능하다는 것을 가정합니다.<br/>
 
-파드 하나는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 커넥션 스레드 풀에서 운영합니다. 따라서 파드 하나는 1초에 20개의 요청을 처리할 수 있다고 추측하고 있습니다. 그리고 파드는 2개를 운영합니다. 따라서 1초에 40개의 요청까지는 정상적으로 처리가 가능합니다.<br/>
-
-로드 유발 스크립트는 0.5초마다 200개의 요청을 합니다. 즉, 클라이언트 측에서는 API에 1초에 400개의 API 요청을 수행합니다.<br/>
+로드 유발 스크립트는 0.5초마다 200개의 요청을 합니다. 즉, 클라이언트 측에서는 API에 1초에 400개의 API 요청을 수행하는 것을 가정합니다.<br/>
 
 테스트 수행결과는 아래의 링크를 참고해주세요. 파드 2기가 결국은 RESTART를 하게 됩니다.
 
@@ -675,23 +686,359 @@ source generate-load-reaquest.sh
 
 ## HPA 적용 후 디플로이먼트 테스트
 
-### 리소스 정의 파일
+HPA를 적용하지 않은 일반 디플로이먼트의 내의 Pod 내에 구동시킬 `fibonacci-backend-web` 컨테이너의 사양은 아래와 같이 구성했습니다.
+
+- memory 
+  - requests : "512Mi"
+  - limits : "1Gi"
+- cpu 
+  - requests: "150m"
+  - limits: "300m"
+
+<br/>
+
+CPU의 사양은 `0.15core ~ 0.3core` 의 범위로 정의했습니다. 이렇게 작성한 Pod 는 3개의 replica 로 운영하는 상황을 가정합니다. CPU, Memory 에 사용하는 단위는 아래 자료에 설명해두었습니다.<br/>
+
+- [memory, cpu 의 단위 (Mi, Gi, m)](https://chagchagchag.github.io/docs-fibonacci-backend/kubernetes-overview/kubernetes-resource-assignment/#memory-cpu-%EC%9D%98-%EB%8B%A8%EC%9C%84-mi-gi-m)
+
+<br/>
+
+그리고 이렇게 정의한 리소스는 HPA (Horizontal Pod Autoscaler)에 의해 Horizontal Scaling 이 되도록 정의했습니다. HPA 내에서는 `3 ~ 10` 개의 파드로 스케일링이 되도록 구성했습니다. 자세한 리소스 파일은 아래의 내용을 확인해주시기 바랍니다.
+
+
+
+### 리소스 정의 파일 
+
+작성한 HPA가 적용된 리소스 정의 파일의 내용은 아래와 같습니다. Github 내의 경로는 [github.com/chagchagchag/fibonacci-backend/k8s/plain-deploy/fibonacci-backend-web/test/fibonacci-web-hpa-applied.yml](https://github.com/chagchagchag/fibonacci-backend/blob/main/k8s/plain-deploy/fibonacci-backend-web/test/fibonacci-web-hpa-applied.yml) 입니다.
+
+```yaml filename="fibonacci-web-hpa-applied.yml" {0} copy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fibonacci
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fibonacci-backend-hpa
+  namespace: fibonacci
+spec:
+  minReplicas: 3
+  maxReplicas: 10
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fibonacci-backend-web-deploy
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 2
+    scaleDown:
+      stabilizationWindowSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fibonacci-backend-web-service
+  namespace: fibonacci
+spec:
+  selector:
+    app: fibonacci-backend-web
+  ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fibonacci-ingress
+  namespace: fibonacci
+spec:
+  rules:
+    - http:
+        paths:
+          - pathType: Prefix
+            path: /fibonacci
+            backend:
+              service:
+                name: fibonacci-backend-web-service
+                port:
+                  number: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-web-deploy
+  namespace: fibonacci
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: fibonacci-backend-web
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-web
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-web:0.0.1
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "150m"
+            limits:
+              memory: "1Gi"
+              cpu: "300m"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","sleep 10"]
+          startupProbe:
+            httpGet:
+              path: /probe/startup
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /probe/ready
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /probe/live
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 3
+            failureThreshold: 20
+
+```
+
+<br/>
+
+
+
+이 파일을 적용하려면 아래의 명령을 수행해주시면 됩니다.<br/>
+
+```bash
+kubectl apply -f fibonacci-web-hpa-applied.yml
+```
+
+<br/>
+
+
+
+위 내용들 중 주요하게 살펴볼 내용은 아래와 같습니다.<br/>
+
+
 
 ### cpu, memory 설정
 
+```yaml filename="fibonacci-web-hpa-applied.yml" {0} copy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fibonacci-backend-web-deploy
+  namespace: fibonacci
+# ...
+spec:
+  replicas: 3
+  # ...
+  template:
+    metadata:
+      labels:
+        app: fibonacci-backend-web
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: fibonacci
+          image: chagchagchag/fibonacci-backend-web:0.0.1
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "150m"
+            limits:
+              memory: "1Gi"
+              cpu: "300m"
+```
+
+<br/>
+
+
+
 ### Probe 설정
+
+- startupProbe 체크 : 1초에 한번씩 체크를 수행하고, 10번을 체크해서 판정하기로 했고, 초기 Spring Boot 애플리케이션 로딩까지 45 초가 걸린다는 가정하에 정의햇습니다.
+- readinessProbe 체크 : 1초에 한번씩 체크를 수행하고 failureThreshold 를 2로 정해서 Ready 체크를 조금은 엄격하게 지정했습니다. 
+
+- livenessProbe 체크 : 3초에 한번씩 체크를 수행하고 20번을 체크해서 판정하기로 했고, 초기 Spring Boot 애플리케이션 로딩 까지 45초가 걸린다는 가정하에 정의했습니다.
+  - HPA를 적용하지 않은 디플로이먼트에 비해 liveness 체크를 3초에 한번씩 체크하게끔해서 조금은 느슨한 기준을 두었고, failureThreshold 역시 20으로 정의한 이유는 최대 10개의 파드가 잦은 리부팅을 하지 않게 하기 위함입니다. 파드의 사양도 많이 낮춰둔 상태이기에 가급적 Live 체크를 느슨하게 수행하도록 해주었습니다.
+
+
+```yaml
+# ...
+          startupProbe:
+            httpGet:
+              path: /probe/startup
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /probe/ready
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 1
+            successThreshold: 1
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /probe/live
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 3
+            failureThreshold: 20
+```
+
+<br/>
+
+
 
 ### 실행상태 확인 스크립트
 
 #### pod 상태 실시간 조회
 
+1초에 한번씩 `kubectl -n fibonacci get pods` 를 수행하는 스크립트는 아래와 같습니다.
+
+```bash
+while true; do
+    clear
+    kubectl -n fibonacci get pods
+    sleep 1
+done
+```
+
+<br/>
+
+Mac OS 또는 Linux 를 사용하는 분들은 아래의 명령어를 수행해주시면 됩니다.
+
+```bash
+watch -n 1 kubectl -n fibonacci get pods
+```
+
+<br/>
+
+
+
 #### CPU, Memory 상태 실시간 조회
 
-### 디플로이먼트 구동 & 로드 유발 쉘 스크립트 구동
+아래의 명령은 클러스터 내에 [`metrics-server`](https://github.com/kubernetes-sigs/metrics-server) 가 설치되어 있어야 조회 가능합니다.<br/>
+
+1초에 한번씩 `kubectl -n fibonacci top pods` 를 수행하는 스크립트는 아래와 같습니다.<br/>
+
+```bash
+while true; do
+    clear
+    kubectl -n fibonacci top pods
+    sleep 1
+done
+```
+
+<br/>
+
+Mac OS 또는 Linux 를 사용하는 분들은 아래의 명령어를 수행해주시면 됩니다.
+
+```bash
+watch -n 1 kubectl -n fibonacci top pods
+```
+
+<br/>
+
+
+
+### 디플로이먼트 구동 & 로드 유발 쉘스크립트 구동 
+
+만약 cluster가 구동되어 있지 않다면 아래와 같이 cluster 를 구동합니다.
+
+```bash
+cd cluster
+source create-cluster.sh
+```
+
+<br/>
+
+
+
+만약 redis 를 띄우지 않은 상태라면 아래와 같이 redis 를 구동합니다.
+
+```bash
+cd k8s/plain-deploy/fibonacci-common
+kubectl apply -f redis.yml
+```
+
+<br/>
+
+
+
+만약 metric-servier 를 설치하지 않았다면 아래의 링크를 방문해서 설치를 진행해주시기 바랍니다.
+
+- [metric-server 설치](https://chagchagchag.github.io/docs-fibonacci-backend/fibonacci-backend-web/backend-web-hpa-testing/#metrics-server-%EC%84%A4%EC%B9%98)
+
+<br/>
+
+
+
+모두 완료되었다면 아래와 같이 deployment 버전의 리소스를 클러스터에 배포해줍니다.<br/>
+
+```bash
+kubectl apply -f fibonacci-web-hpa-not-applied.yml
+```
+
+<br/>
+
+
+
+애플리케이션의 READY 가 모두 `1/1` 로 나타날 때 아래와 같이 쉘스크립트를 수행합니다.<br/>
+
+```bash
+source generate-load-reaquest.sh
+```
+
+<br/>
+
+
 
 ### 로드 처리 결과
 
+파드 하나는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 커넥션 스레드 풀에서 운영합니다. 따라서 파드 하나는 1초에 20개의 요청을 처리할 수 있다고 추측하고 있습니다. 그리고 파드는 최소 3개에서 10개가 스케일링 되도록 HPA(HorizontalPodAutoscaler) 기반으로 운영합니다. 따라서 1초에 최소 60개의 요청이 처리 가능하고 최대 200개의 요청까지는 정상적으로 처리가 가능하다는 추론이 가능합니다. (`60 ~ 200`)<br/>
 
+로드 유발 스크립트는 0.5초마다 200개의 요청을 합니다. 즉, 클라이언트 측에서는 API에 1초에 400개의 API 요청을 수행하는 것을 가정합니다.<br/>
+
+테스트 수행결과는 아래의 링크를 참고해주세요. 실험 결과는 파드 10기까지 HPA 를 통해 스케일아웃이 발생하며, CPU 점유율이 모든 파드가 300m 까지 치솟았다가 평균적으로 모든 파드가 `100m` 수준을 유지하게 되는 것을 확인 가능합니다.
+
+- [HPA 가 적용된 디플로이먼트](https://youtu.be/vK_nj7bbdZw?si=mY3U9Tei_1pR5gKD)
+
+<br/>
 
 
 
