@@ -69,7 +69,7 @@ Spring Boot 애플리케이션에 지연코드 추가
 
 
 
-spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
+Spring Boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
 
 - 스레드 풀을 10개만 있는 상황을 가정합니다.
 - 이렇게 하면 하나의 파드는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 스레드에서 운영하게 되므로 1초에 10개의 스레드를 이용해 20번의 요청을 처리할 수 있습니다. 이런 상황을 가정해서 테스트를 수행하겠습니다.
@@ -140,6 +140,20 @@ spec:
         - containerPort: 6379
 ```
 <br/>
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
 
 
 ## 로드 유발 쉘스크립트 작성
@@ -221,28 +235,29 @@ fibonacci-cluster-worker          29m          0%     283Mi           1%
 
 ### curl 요청 쉘스크립트 추가
 
-단순한 코드입니다. 1초에 한번씩 50개의 curl 요청을 `GET http://localhost:8080/number=1` 으로 보내는 쉘스크립트입니다.
+단순한 코드입니다. 0.5초에 한번씩 200개의 curl 요청을 `GET http://localhost/fibonacci?number=11` 으로 보내는 쉘스크립트입니다.
 
 ```bash filename="load.sh" {0} copy 
 #!/bin/bash
 
-while true; do    
-  count=50
+while true; do
+  count=200
 
   for ((i = 0; i < count; i++)); do
-    curl "http://localhost:8080/fibonacci?number=1" &
+    curl "http://localhost/fibonacci?number=11" &
   done
- 
-  sleep 1  
-done
 
+  sleep 0.5
+done
 ```
 
 <br/>
 
 
 
-## spring boot  애플리케이션에 지연코드 추가
+
+
+## Spring Boot 애플리케이션에 지연코드 추가
 
 > 이번 테스트 실습이 끝난 후에는 반드시 지연코드를 지우고 원래의 코드로 되돌려놓아야 합니다.<br/>
 
@@ -288,7 +303,7 @@ public class FibonacciService {
 
 
 
-## spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
+## Spring Boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
 
 > 이번 테스트 실습이 끝난 후에는 반드시 원래의 톰캣 스레드 풀 설정으로 되돌려줘야 합니다.<br/>
 
@@ -319,6 +334,24 @@ spring:
 ```
 
 <br/>
+
+
+
+이렇게 해서 500ms 마다 연산을 한번씩 계산을 수행하는 API를 최대 10개의 커넥션 스레드 풀에서 수행을 하기에 1초에 2번의 API요청을 받을 수 있다고 할때 10개의 커넥션 스레드 풀에서 요청을 받는다면 하나의 인스턴스가 1초에 최대 20번의 API 요청을 받을 수 있다고 계산을 통해 추측할 수 있습니다.<br/>
+
+그런데 로드 유발 쉘스크립트에서는 0.5초마다 200 개의 API 요청을 하기에 대략 1초에 400개의 요청이 [http://localhost/fibonacci?number=11](http://localhost/fibonacci?number=11) 으로 이뤄짐을 짐작가능합니다.<br/>
+
+
+
+## HPA 적용 전 일반 디플로이먼트 테스트
+
+
+
+## HPA 적용 후 디플로이먼트 테스트
+
+
+
+
 
 
 
