@@ -1,30 +1,69 @@
 ## HPA 정의 및 테스트
 
-개인적으로 이런 매니페스트 파일 기반 리소스 테스트는 kustomize 를 이용하면 조금 더 편할 것 같습니다. 이번 실습에서는 kustomize 를 적용하면 다소 이해가 쉽지 않을 수 있어서 kustomize 를 예제에 적용하지는 않았습니다.<br/>
+kustomize 를 적용해서 hpa 적용버전, 일반 deployment 를 적용할수도 있겠지만, 이렇게 하면 kustomize 까지 설명해야 해서 이번 문서인 HPA테스트 문서는 일반적인 yaml 파일로 HPA를 정의하고 테스트했습니다.<br/>
+
+
+
+잠시 수정 중입니다. 내용을 깔끔하게 가다듬는 데에 3시간 정도 소요될것 같습니다. <br/>
+
+내용이 계속해서 바뀌더라도 양해부탁드립니다.<br/>
+
+<br/>
+
+
+
+## 예제 적용범위, 예제 스크립트 경로
+
+**예제 적용범위**<br/>
+
+이번 예제는 `fibonacci-backend-web` 에 범위를 한정했습니다.<br/>
+
+`fibonacci-backend-cache` 까지 적용해서 테스트하기에는 문서의 범위가 너무 길어져서 `fibonacci-backend-web` 까지로 범위를 한정했습니다.<br/>
+
+
+
+**예제 스크립트**<br/>
+
+이번 예제에서 사용한 성능 테스트를 위한 리소스 정의 파일 및 쉘 스크립트들은 아래 링크에서 모두 찾아볼 수 있습니다.
+
+- [github.com/fibonacci-backend/k8s/plain-deploy/fibonacci-backend-web/test](https://github.com/chagchagchag/fibonacci-backend/tree/main/k8s/plain-deploy/fibonacci-backend-web/test)
+
+<br/>
+
+
+
+## 테스트 영상
+
+테스트해본 영상은 길이가 다소 길고 Github 에 업로드할 수 없어서 Youtube에 업로드해두었고 아래의 링크를 통해서만 시청이 가능합니다.
+
+- [HPA 를 적용하지 않은 단순 디플로이먼트의 동작](https://youtu.be/1EZ1YGYcqi4?si=om9Dk3aecIouUv4w)
+- [HPA 가 적용된 디플로이먼트](https://youtu.be/vK_nj7bbdZw?si=mY3U9Tei_1pR5gKD)
+
+<br/>
+
+
+
+이번 문서에서는 위 영상들의 시연 영상을 캡처한 이미지들을 기반으로 HPA 적용시에 어떻게 달라지고, HPA 적용전에는 어떤지를 설명합니다.<br/>
 
 
 
 ## 테스트 시나리오
 HPA 가 잘 적용되는지 테스트를 해보는 테스트 시나리오는 아래와 같습니다. 꼭 HPA 의 동작을 확인한 후에는 다시 정상으로 돌려두어야 합니다.<br/>
 
+
+
 로드 유발 쉘스크립트 작성
-- 테스트를 위해 `generate-load-request.sh` 에서는 1초에 50개의 request 를 보내는데 [http://localhost:8080/number=1](http://localhost:8080/number=1) 을 단순 GET 요청으로 보냅니다. 
-  <br/>
-
-
-
-쿠버네티스 애플리케이션에 지연코드 추가
-
-- 테스트를 위해 지연이 발생하는 코드를 쿠버네티스 애플리케이션에 추가합니다.
-- `fibonacci-backend-web` 내에서 fibonacci 계산을 수행하는 함수에 500ms 의 delay 를 부여합니다. 이렇게 해서 1초에 약 2번 정도 연산을 수행할 수 있는 상황을 가정합니다.
+- 테스트를 위해 `generate-load-request.sh` 에서는 0.5초마다 200개의 request 를 보내는데 [http://localhost/fibonacci?number=11](http://localhost/fibonacci?number=11) 을 단순 GET 요청으로 보냅니다. 
 
 <br/>
 
 
 
-spring boot 애플리케이션에 지연 코드 추가
+Spring Boot 애플리케이션에 지연코드 추가
 
-- 테스트를 위해 애플리케이션의 `localhost:8080/number=1` 이 1초에 2번의 요청만 수행가능한 환경을 가정합니다.
+- 테스트를 위해 지연이 발생하는 코드를 쿠버네티스 애플리케이션에 추가합니다.
+- `fibonacci-backend-web` 내에서 fibonacci 계산을 수행하는 함수에 500ms 의 delay 를 부여합니다. 
+- 애플리케이션에서는 API 에 대해 수행하는 연산이 500ms 의 시간이 걸린다는 것을 가정합니다. 500ms 는 애플리케이션 입장에서는 꽤 큰 지연시간입니다.
 
 <br/>
 
@@ -36,6 +75,13 @@ spring boot 애플리케이션의 톰캣 스레드 풀 사이즈 수정
 - 이렇게 하면 하나의 파드는 1초에 2번의 요청을 처리할 수 있는 API를 10개의 스레드에서 운영하게 되므로 1초에 10개의 스레드를 이용해 20번의 요청을 처리할 수 있습니다. 이런 상황을 가정해서 테스트를 수행하겠습니다.
 
 <br/>
+
+
+
+HPA 적용 전 일반 디플로이먼트 테스트
+
+- 일반 디플로이먼트를 테스트하기 위한 리소스 정의 파일을 작성합니다.
+- 
 
 
 
