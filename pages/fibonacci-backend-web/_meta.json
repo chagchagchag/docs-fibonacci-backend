@@ -5,6 +5,5 @@
     "backend-web-k8s-yaml": "k8s 리소스 정의 & 로컬 k8s 확인",
     "backend-web-hpa-testing": "HPA 정의 및 테스트",
     "backend-web-kustomize": "Kustomize Overlay 작업",
-    "backend-web-graceful-shutdown": "Graceful Shutdown 처리",
-    "backend-web-perf-test": "부하테스트"
+    "backend-web-graceful-shutdown": "Graceful Shutdown 처리"
 }
